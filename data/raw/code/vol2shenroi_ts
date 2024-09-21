@@ -1,0 +1,46 @@
+#!/usr/bin/python
+
+import sys
+import os
+
+args = dict(
+    sub=sys.argv[1],
+    run=sys.argv[2])
+
+atlas_filename = "sub-{sub}/atlases/bold3Tp2/shen_fconn_atlas_150.nii.gz".format(**args)
+fmri_filename = "src/aligned/sub-{sub}/in_bold3Tp2/sub-{sub}_task-avmovie_run-{run}_bold.nii.gz".format(**args)
+confounds = "src/aligned/sub-{sub}/in_bold3Tp2/sub-{sub}_task-avmovie_run-{run}_bold_mcparams.txt".format(**args)
+csv_filename = os.path.join("sub-{sub}".format(**args), 'shen_fconn', os.path.basename(fmri_filename)[:-6] + "csv")
+
+##############################################################################
+# Extract signals on a parcellation defined by labels using the
+# NiftiLabelsMasker
+from nilearn.input_data import NiftiLabelsMasker
+masker = NiftiLabelsMasker(
+    labels_img=atlas_filename,
+    background_label=0,
+    smoothing_fwhm=4.0,
+    t_r=2.0,
+    standardize=True,
+    detrend=True,
+    memory='nilearn_cache',
+    verbose=5)
+
+# Here we go from nifti files to the signal time series in a numpy
+# array. Note how we give confounds to be regressed out during signal
+# extraction
+time_series = masker.fit_transform(
+    fmri_filename,
+    confounds=confounds)
+labels = [int(l) for l in masker.labels_]
+
+##############################################################################
+# Store as CSV
+import numpy as np
+np.savetxt(
+    csv_filename,
+    time_series,
+    delimiter=',',
+    header=','.join([str(l) for l in labels]),
+    comments='',
+    fmt="%.10f")

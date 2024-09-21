@@ -1,0 +1,45 @@
+# Metadata for DOI registration according to DataCite Metadata Schema 4.1.
+# For detailed schema description see https://doi.org/10.5438/0014
+
+
+authors:
+  - firstname: Michael
+    lastname: Hanke
+    id: "ORCID:0000-0001-6398-6370"
+
+  - firstname: Adina
+    lastname: Wagner
+    id: "ORCID:0000-0003-2917-3450"
+
+  - firstname: Laura
+    lastname: Waite
+    id: "ORCID:0000-0003-2213-7465"
+    
+  - firstname: Christian
+    lastname: Mönch
+    id: "ORCID:0000-0002-3092-0612"
+
+
+title: "Aggregate fMRI time series"
+
+
+description: |
+  "This dataset is part of the studyforrest datasets."
+
+
+keywords:
+  - Neuroscience
+  - Studyforrest
+
+
+license:
+  name: "Open Data Commons Public Domain Dedication and License (PDDL)"
+  url: "https://opendatacommons.org/licenses/pddl/"
+
+
+# Resource type. Default is Dataset, other possible values are Software, Image, Text.
+resourcetype: Dataset
+
+
+# Do not edit or remove the following line
+templateversion: 1.2
