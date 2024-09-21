@@ -1,0 +1,20 @@
+paths:
+  project_root: ${hydra:config_path}/../..
+  raw_path: ${paths.project_root}/data/raw
+  raw_test_path: ${paths.project_root}/data/raw/test
+  annotations_path: ${paths.project_root}/data/annotations
+  annotations_test_path: ${paths.project_root}/data/annotations/test
+data:
+  batch_size: 32
+  num_workers: 4
+synthetic_data:
+  num_subjects: 8
+  runs_per_subject: 2
+  num_features: 200
+  num_classes: 4
+  labels:
+  - class0
+  - class1
+  - class2
+  - class3
+  annotation_filename: test_annotations.tsv
