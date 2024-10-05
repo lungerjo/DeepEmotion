@@ -6,7 +6,7 @@ import pandas as pd
 from omegaconf import DictConfig
 import hydra
 from pathlib import Path
-import shutil  # Import shutil to handle directory removal
+import shutil
 
 # Get config
 PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)  # Adjust as needed

@@ -2,74 +2,36 @@
 import os
 from pathlib import Path
 
+import pandas as pd
+from torch.utils.data import Dataset
+from torchvision import datasets
+from torchvision.transforms import ToTensor
+import matplotlib.pyplot as plt
+from omegaconf import DictConfig
+import hydra
+
 PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)  # Adjust as needed based on project structure
 os.environ['PROJECT_ROOT'] = PROJECT_ROOT
 CONFIG_PATH = str(Path(PROJECT_ROOT) / "src" / "configs")
 
-# Import necessary modules
-from dataclasses import dataclass
-import hydra
-from omegaconf import DictConfig
+@hydra.main(config_path=CONFIG_PATH, config_name="test", version_base=None)
+class EmotionAVDataset(Dataset):
+    def __init__(self, cfg: DictConfig, transform=None, target_transform=None):
 
-@dataclass
-class DataLoader:
-    annotations_path: Path
-    raw_data_path: Path
+        annotation_path = cfg.paths.selected_annotation_paths[cfg.paths.selected_annotation]
+        self.labels = pd.read_csv(annotation_path)
+        self.transform = transform
+        self.target_transform = target_transform
 
-    def __init__(self, cfg: DictConfig):
-        """
-        Initialize the DataLoader with paths from the Hydra configuration.
+    def __len__(self):
+        return len(self.img_labels)
 
-        Args:
-            cfg (DictConfig): The Hydra configuration object containing path settings.
-        """
-        self.annotations_path = Path(cfg.paths.annotations_test_path)
-        self.raw_data_path = Path(cfg.paths.raw_test_path)
-        # TODO: Initialize other necessary variables
-
-    def load_annotations(self):
-        """
-        Load annotations from the specified annotations path.
-
-        TODO: Implement the method to load annotations.
-        """
-        pass  # Replace with actual implementation
-
-    def load_raw_data(self):
-        """
-        Load raw data from the specified raw data path.
-
-        TODO: Implement the method to load raw data.
-        """
-        pass  # Replace with actual implementation
-
-    def preprocess_data(self):
-        """
-        Preprocess the loaded data as required.
-
-        TODO: Implement data preprocessing steps.
-        """
-        pass  # Replace with actual implementation
-
-    def get_data(self):
-        """
-        Retrieve the processed data for model consumption.
-
-        TODO: Implement data retrieval logic.
-        """
-        pass  # Replace with actual implementation
-
-# Example usage with Hydra
-@hydra.main(config_path=CONFIG_PATH, config_name="config")
-def main(cfg: DictConfig):
-    # Initialize the DataLoader with the Hydra configuration
-    data_loader = DataLoader(cfg)
-
-    # TODO: Use data_loader methods to load and process data
-    # data_loader.load_annotations()
-    # data_loader.load_raw_data()
-    # data_loader.preprocess_data()
-    # data = data_loader.get_data()
-
-if __name__ == "__main__":
-    main()
+    def __getitem__(self, idx):
+        img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
+        image = read_image(img_path)
+        label = self.img_labels.iloc[idx, 1]
+        if self.transform:
+            image = self.transform(image)
+        if self.target_transform:
+            label = self.target_transform(label)
+        return image, label
