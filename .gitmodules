@@ -4,7 +4,6 @@
 [submodule "annotations"]
 	path = annotations
 	url = https://github.com/psychoinformatics-de/studyforrest-data-annotations.git
-[submodule "data/studyforrest-data-multires7t"]
-	path = data/studyforrest-data-multires7t
-	url = https://github.com/psychoinformatics-de/studyforrest-data-multires7t.git
-	datalad-id = 3a8648b3-7df8-413f-8efb-4d39040ac174
+[submodule "data/raw"]
+	path = data/raw
+	url = https://openneuro.org/datasets/ds000113
