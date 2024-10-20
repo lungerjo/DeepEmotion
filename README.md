@@ -18,10 +18,14 @@ poetry shell
 and ``exit`` to exit.
 
 #### Datalad
-The dataset is hosted on [datalad](https://www.datalad.org) stored in ``raw``. To download the dataset, navigate to the ``data`` directory and run
-```
-datalad get -r raw
-```
-This will download about 250gb of fMRI data to your machine. You have been warned.
+The dataset is hosted on [datalad](https://www.datalad.org) stored in ``raw``. To get started with datalad, follow the [install documentation](https://handbook.datalad.org/en/latest/intro/installation.html#install-datalad). Once you have installed, you can fetch the dataset with 
+```datalad get data/raw```
+and any individual file within with 
+```datalad get <path/to/data>```
+
+
+
+
+
 
 
