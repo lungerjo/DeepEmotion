@@ -19,8 +19,10 @@ and ``exit`` to exit.
 
 #### Datalad
 The dataset is hosted on [datalad](https://www.datalad.org) stored in ``raw`` and ``annotations``. To get started with datalad, follow the [install documentation](https://handbook.datalad.org/en/latest/intro/installation.html#install-datalad). Once you have installed, you can fetch the raw and annotation datasets with with 
-```datalad get data/raw```
-```datalad get data/annotations```
+```
+datalad get data/raw
+datalad get data/annotations
+```
 This will populate the directories with symbolic links. To get the data, run 
 ```datalad get <path/to/data>```
 or
