@@ -5,6 +5,11 @@ description = "Deep classification of emotions of fMRI subjects watching Forest 
 authors = ["lungerjo <j.lunger@mail.utoronto.ca>"]
 readme = "README.md"
 
+packages = [
+    { include = "scripts", from = "src" },
+    { include = "models", from = "src" }
+]
+
 [tool.poetry.dependencies]
 python = "^3.12"
 datalad = "^1.1.3"
