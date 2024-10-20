@@ -1,9 +1,9 @@
 [submodule "aggregate"]
 	path = aggregate
 	url = https://hub.datalad.org/studyforrest/aggregate.git
-[submodule "annotations"]
-	path = annotations
-	url = https://github.com/psychoinformatics-de/studyforrest-data-annotations.git
 [submodule "data/raw"]
 	path = data/raw
 	url = https://github.com/OpenNeuroDatasets/ds000113.git
+[submodule "data/annotations"]
+	path = data/annotations
+	url = https://github.com/psychoinformatics-de/studyforrest-data-annotations.git

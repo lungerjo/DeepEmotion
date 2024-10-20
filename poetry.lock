@@ -373,6 +373,17 @@ publish = ["python-gitlab"]
 tests = ["BeautifulSoup4", "httpretty (>=0.9.4)", "mypy", "pytest", "pytest-cov", "pytest-fail-slow (>=0.2,<1.0)", "types-python-dateutil", "types-requests", "vcrpy"]
 
 [[package]]
+name = "datalad-installer"
+version = "1.0.5"
+description = "Installation script for Datalad and related components"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "datalad_installer-1.0.5-py3-none-any.whl", hash = "sha256:cb1bd7fba8836f6e3478a8f084509f537e0f3e7bf353200a1ac81ede159b9d98"},
+    {file = "datalad_installer-1.0.5.tar.gz", hash = "sha256:eb7240496e51d59ac045f2a0125641c7bbe6305a794e4e4f629fbc34f7967d7f"},
+]
+
+[[package]]
 name = "distro"
 version = "1.9.0"
 description = "Distro - an OS platform information API"
@@ -1075,4 +1086,4 @@ zstd = ["zstandard (>=0.18.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "7bbf7ad8350a3b5448585d130fbc4aba4ee8dab676ff7c2ca3fae86ddd492957"
+content-hash = "24be28a677a9d904989b6e086466c42dd36df5576f411ae531af4ee5852a9785"
