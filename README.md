@@ -1,27 +1,27 @@
 # DeepEmotion: Contrastive Learning for fMRI Classification of Emotions
 
 ### Setup
-Deep Emotion uses the native python venv client for handling package dependencies. To get started, run
+#### Package Dependencies
+Deep Emotion uses Poetry for handling package dependencies. To get started, run
 
 ```
 git clone git@github.com:lungerjo/DeepEmotion.git
 cd DeepEmotion
-python -m venv venv
-source venv/bin/activate
-pip install -e .
+pip install poetry
+poetry install
 ```
 
-### Extending DeepEmotion
-
-When extending or contributing to the DeepEmotion project, ensure each script includes the following header for consistent configuration management:
-
+To activate the poetry environment, run
 ```
-import os
-from pathlib import Path
-
-PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)  # Adjust as needed based on script location (should point to /DeepEmotion)
-os.environ['PROJECT_ROOT'] = PROJECT_ROOT
-CONFIG_PATH = str(Path(PROJECT_ROOT) / "src" / "configs")
+poetry shell
 ```
+and ``exit`` to exit.
 
-Any globals should be defined under `src/configs/<config>.yaml`
+#### Datalad
+The dataset is hosted on [datalad](https://www.datalad.org) stored in ``raw``. To download the dataset, navigate to the ``data`` directory and run
+```
+datalad get -r raw
+```
+This will download about 250gb of fMRI data to your machine. You have been warned.
+
+
