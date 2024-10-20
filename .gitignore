@@ -1,4 +1,3 @@
 src/DeepEmotion_fMRI_Classification_for_Emotion_Representation.egg-info
 venv
 data/test
-data/annotations
