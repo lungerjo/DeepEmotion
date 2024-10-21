@@ -1,0 +1,49 @@
+# base.yaml
+
+hydra:
+  run:
+    dir: .  # Keep the working directory as the current directory
+  output_subdir: null  # Prevent creating the "outputs" subdirectory
+  
+
+  # Configure job logging (output only to stdout)
+  job_logging:
+    version: 1
+    disable_existing_loggers: False
+    formatters:
+      simple:
+        format: '%(message)s'
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: simple
+        stream: ext://sys.stdout  # Output to stdout, no file logging
+    root:
+      level: INFO  # Print info level logs and higher
+      handlers: [console]  # Only use console handler
+  
+  # Configure hydra internal logging (output only to stdout)
+  hydra_logging:
+    version: 1
+    disable_existing_loggers: False
+    formatters:
+      simple:
+        format: '%(message)s'
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: simple
+        stream: ext://sys.stdout  # Output to stdout
+    root:
+      level: INFO  # Print info level logs and higher
+      handlers: [console]  # Only use console handler
+
+data:
+  project_root: ${hydra:runtime.config_dir}/../..  # Navigate two levels up to reach the project root
+  derivatives_path: "${data.project_root}/data/raw/derivatives/non-linear_anatomical_alignment"
+  runs: ["01", "02"]  # 2 run for now
+  file_pattern_template: "*_ses-forrestgump_task-forrestgump_rec-dico7Tad2grpbold7TadNL_run-{}_bold.nii.gz"
+  subjects: ["sub-01", "sub-02"]  # Extendable if more subjects
+
+verbose: True
+
