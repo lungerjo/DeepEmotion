@@ -6,32 +6,74 @@ import hydra
 from omegaconf import DictConfig
 from typing import List, Tuple
 
-
 import torch
 from torch.utils.data import Dataset
 from pathlib import Path
 import nibabel as nib
 from typing import List, Tuple
-
+import pandas as pd
 
 class CrossSubjectDataset(Dataset):
-    def __init__(self, data_root: Path, subjects: List[str], file_pattern_template: str, runs: List[str], verbose: bool = False):
+    def __init__(self, cfg: DictConfig):
         """
-        Initialize the dataset to load all subjects and all runs.
+        Initialize the dataset to load all subjects, all runs, and align labels by observer.
 
         Args:
-        - data_root: The root path to the data directory.
+        - data_path: The root path to the data directory.
+        - label_path: The root path to the label directory.
         - subjects: List of subject directories to include.
         - file_pattern_template: The file pattern template that will be used to find the files.
         - runs: List of runs (e.g., ["01", "02", "03"]) to include.
+        - session_offsets: List of session-based time offsets for alignment.
         - verbose: Whether to print verbose output during dataset loading.
         """
-        self.data_root = Path(data_root).resolve()  # Ensure absolute path
-        self.subjects = subjects
-        self.file_pattern_template = file_pattern_template
-        self.runs = runs
-        self.verbose = verbose
+        self.data_path = Path(cfg.data.data_path).resolve()  # Ensure absolute path
+        self.label_path = Path(cfg.data.label_path).resolve()
+        self.subjects = cfg.data.subjects
+        self.file_pattern_template = cfg.data.file_pattern_template
+        self.sessions = cfg.data.sessions
+        self.session_offsets = cfg.data.session_offsets  # Cumulative time offsets for each session
+        self.verbose = cfg.verbose
+        self.emotion_idx = cfg.data.emotion_idx
+        self.observer_labels = pd.read_csv(self.label_path, sep='\t')
         self.data_files, self.data, self.num_timepoints = self._load_data()  # Load data and track number of timepoints per file
+        self.aligned_labels = self._align_labels()  
+
+
+    def _apply_offset(self, session_idx: int, timestamp: int) -> int:
+        """
+        Applies the cumulative time offset based on the session index.
+
+        Args:
+        - session_idx: Index of the session (0, 1, 2, ...).
+        - timestamp: The raw timestamp in the current session.
+
+        Returns:
+        - offset_timestamp: The global timestamp adjusted for the session offset.
+        """
+        return timestamp + self.session_offsets[session_idx]
+
+    def _align_labels(self):
+        """
+        Aligns the observer's labels based on the time offset column and the session-based fMRI offsets.
+        """
+        aligned_labels = []
+        for session_idx, session_length in enumerate(self.num_timepoints):
+            session_start = sum(self.num_timepoints[:session_idx])  # Cumulative session start time
+            session_end = session_start + session_length * 2  # Assuming 2-second resolution
+
+            # Filter labels within this session's time range
+            session_labels = self.observer_labels[(self.observer_labels['offset'] >= session_start) &
+                                                  (self.observer_labels['offset'] < session_end)].copy()
+
+            # Apply the session time offset
+            session_labels['offset'] = session_labels['offset'].apply(
+                lambda t: self._apply_offset(session_idx, t)
+            )
+
+            aligned_labels.append(session_labels)
+        
+        return pd.concat(aligned_labels)
 
     def _find_files(self) -> List[Path]:
         """
@@ -44,9 +86,10 @@ class CrossSubjectDataset(Dataset):
         if self.verbose:
             print(f"Finding files")
         for subject in self.subjects:
-            for run in self.runs:
-                subject_dir = self.data_root / subject / "ses-forrestgump/func"
-                file_pattern = self.file_pattern_template.format(run)
+            for session in self.sessions:
+                subject_dir = self.data_path / subject / "ses-forrestgump/func"
+                print(subject_dir)
+                file_pattern = self.file_pattern_template.format(session)
                 matched_files = list(subject_dir.rglob(file_pattern))  # Recursively find files matching the pattern
                 files.extend(matched_files)
         if self.verbose:
@@ -82,16 +125,16 @@ class CrossSubjectDataset(Dataset):
         """
         return sum(self.num_timepoints)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, str]:
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Returns a single time slice from the dataset.
+        Returns a single time slice from the dataset along with one-hot encoded label.
 
         Args:
         - idx: The index of the data to retrieve.
 
         Returns:
         - data_slice: A 3D tensor representing a single time slice with shape [1, x_shape, y_shape, z_shape].
-        - file_path: The path to the file from which the data was loaded.
+        - one_hot_label: A one-hot encoded tensor for the corresponding emotion label.
         """
         # Find the file and corresponding time slice for the given index
         cumulative_timepoints = 0
@@ -99,14 +142,30 @@ class CrossSubjectDataset(Dataset):
             if idx < cumulative_timepoints + timepoints:
                 time_idx = idx - cumulative_timepoints  # Get the time index within the current file
                 data_slice = self.data[i][..., time_idx]  # Extract the 3D slice for the given timepoint
-                data_slice = data_slice.unsqueeze(0)  # Add the singleton dimension to match [1, x_shape, y_shape, z_shape]
-                return data_slice, str(self.data_files[i])
+
+                # Use row index directly to fetch the label (assuming no misalignment)
+                if idx >= len(self.aligned_labels):
+                    raise IndexError(f"Index {idx} out of bounds for label data with length {len(self.aligned_labels)}")
+
+                # Fetch the label using the row index
+                label = str(self.aligned_labels.iloc[idx]['emotion'])  # Get the label using the row index
+                label_idx = self.emotion_idx[label]  # Convert the string label to an integer index
+                
+                # Convert the integer label to a one-hot encoded tensor
+                one_hot_label = torch.nn.functional.one_hot(torch.tensor(label_idx), num_classes=len(self.emotion_idx)).float()
+
+                return data_slice, one_hot_label
+            
             cumulative_timepoints += timepoints
 
         raise IndexError(f"Index {idx} out of range")
 
 
-def get_data_loader(cfg: DictConfig, batch_size: int = 1, shuffle: bool = False) -> DataLoader:
+
+
+    
+
+def get_data_loader(cfg: DictConfig) -> DataLoader:
     """
     Creates and returns a DataLoader for the fMRI dataset across all subjects and runs.
 
@@ -118,20 +177,13 @@ def get_data_loader(cfg: DictConfig, batch_size: int = 1, shuffle: bool = False)
     Returns:
     - dataloader: The DataLoader for the combined dataset across all subjects and runs.
     """
-    derivatives_path = Path(cfg.data.derivatives_path).resolve()
-    print(derivatives_path)
     
     # Initialize dataset which will load all data into memory
-    dataset = CrossSubjectDataset(data_root=derivatives_path, 
-                                  subjects=cfg.data.subjects, 
-                                  file_pattern_template=cfg.data.file_pattern_template, 
-                                  runs=cfg.data.runs,
-                                  verbose=cfg.verbose)
+    dataset = CrossSubjectDataset(cfg)
     
     # Create DataLoader from the preloaded dataset
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+    dataloader = DataLoader(dataset, batch_size = cfg.train.batch_size, shuffle = cfg.train.shuffle)
     return dataloader
-
 
 
 @hydra.main(config_path="../configs", config_name="base", version_base="1.2")
@@ -144,8 +196,14 @@ def main(cfg: DictConfig) -> None:
     """
 
     # Get DataLoader for all subjects and runs
+    print(cfg.project_root)
     dataloader = get_data_loader(cfg)
     if cfg.verbose: print("DataLoader initialized with preloaded data.")
+    for data, labels in dataloader:
+        # data is a batch of fMRI slices
+        # labels is a batch of corresponding emotion labels
+        print(data.shape, labels.shape)
+    
 
 
 if __name__ == "__main__":

@@ -5,8 +5,7 @@ import os
 
 PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 os.environ['PROJECT_ROOT'] = PROJECT_ROOT
-print(PROJECT_ROOT)
-file_path = str(Path(PROJECT_ROOT) / "data/raw/derivatives/non-linear_anatomical_alignment/sub-06/ses-forrestgump/func/sub-06_ses-forrestgump_task-forrestgump_rec-dico7Tad2grpbold7TadNL_run-01_bold.nii.gz")
+file_path = str(Path(PROJECT_ROOT) / "data/raw/derivatives/non-linear_anatomical_alignment/sub-11/ses-forrestgump/func/sub-11_ses-forrestgump_task-forrestgump_rec-dico7Tad2grpbold7TadNL_run-07_bold.nii.gz")
 def get_nii_shape():
 
     img = nib.load(file_path)

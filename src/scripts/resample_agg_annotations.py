@@ -1,21 +1,24 @@
 import os
 import numpy as np
 import pandas as pd
+import hydra
+from omegaconf import DictConfig
 
-
-def resample_events_prioritize(file_path, unit=1, end_time=8000):
+@hydra.main(config_path="../configs", config_name="base", version_base="1.2")
+def resample_events_prioritize(cfg: DictConfig):
     """
     Resample the dataframe so that there is an entry for each timestamp according to the aggregation
     rule: prioritization.
         prioritizing assumes subjects resonates only/mostly with the main characters
-
-    file_path: the path of a emotion annotion file (tsv)
-    unit: resolution, default to 1 sec
-    end_time: a timestamp larger than the length of the movie would work
     
     Returns: None, saves the tsv in a new file
     """
-    df = pd.read_csv(os.path.join("data", "annotations", file_path), sep='\t')
+    project_root = cfg.project_root
+    file_path = os.path.join(project_root, 'data', 'annotations', 'researchcut', 'emotions_av_1s_events.tsv')
+    df = pd.read_csv(file_path, sep='\t')
+    unit = 2 # resolution
+    end_time = 7031 # last timestamp of movie
+
     rows = []  
     for _, row in df.iterrows():
         timestamps = range(int(row['onset']), int(row['onset']) + int(np.ceil(row['duration'] / unit)) * unit, unit)
@@ -40,7 +43,8 @@ def resample_events_prioritize(file_path, unit=1, end_time=8000):
     df_unique = df_sorted.drop_duplicates(subset=['onset'], keep='first')
     df_unique = df_unique.drop(columns=['rank'])
 
-    df_unique.to_csv(os.path.join("data", "resampled_annotations", file_path), sep='\t', index=False)
+    out_path = os.path.join(project_root, "data", "resampled_annotations", 'emotions_av_1s_events.tsv')
+    df_unique.to_csv(os.path.join(out_path), sep='\t', index=False)
 
 
 def resample_events_add(file_path, unit=1, end_time=8000):
@@ -79,5 +83,5 @@ def resample_events_add(file_path, unit=1, end_time=8000):
 
 
 if __name__ == "__main__":
-    resample_events_add("emotion_audio_only.tsv")
+    resample_events_prioritize()
 
