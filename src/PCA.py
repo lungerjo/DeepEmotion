@@ -27,14 +27,14 @@ def main(cfg: DictConfig) -> None:
 
     # Iterate over subjects and runs in the configuration
     for subject in cfg.data.subjects:
-        for run in cfg.data.runs:
+        for session in cfg.data.sessions:
             # Construct the file path from the configuration
             output_file_path = os.path.join(
                 cfg.project_root,
                 "data",
                 "derivative",
                 "PCA_local",
-                f"{subject}_{run}.csv"
+                f"{subject}_{session}.csv"
             )
             
             # Ensure the directory exists
