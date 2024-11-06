@@ -1,5 +1,5 @@
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 from pathlib import Path
 import nibabel as nib
 import hydra
@@ -160,12 +160,9 @@ class CrossSubjectDataset(Dataset):
 
         raise IndexError(f"Index {idx} out of range")
 
-
-
-
     
 
-def get_data_loader(cfg: DictConfig) -> DataLoader:
+def get_data_loaders(cfg: DictConfig) -> DataLoader:
     """
     Creates and returns a DataLoader for the fMRI dataset across all subjects and runs.
 
@@ -180,10 +177,17 @@ def get_data_loader(cfg: DictConfig) -> DataLoader:
     
     # Initialize dataset which will load all data into memory
     dataset = CrossSubjectDataset(cfg)
+
+    # Specify the train-validation split ratio
+    train_ratio = cfg.train.ratio
+    train_size = int(train_ratio * len(dataset))
+    val_size = len(dataset) - train_size
+    train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
     
     # Create DataLoader from the preloaded dataset
-    dataloader = DataLoader(dataset, batch_size = cfg.train.batch_size, shuffle = cfg.train.shuffle)
-    return dataloader
+    train_dataloader = DataLoader(train_dataset, batch_size = cfg.train.batch_size, shuffle = cfg.train.shuffle)
+    val_dataloader = DataLoader(val_dataset, batch_size = cfg.train.batch_size, shuffle = cfg.train.shuffle)
+    return train_dataloader, val_dataloader
 
 
 @hydra.main(config_path="../configs", config_name="base", version_base="1.2")

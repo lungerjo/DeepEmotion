@@ -7,8 +7,8 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.colors import to_rgba  # Correct import for color conversion
 
 # Paths to the CSV and label files
-csv_path = '/Users/joshualunger/DeepEmotionBackup/data/derivative/PCA_local/sub-20_08.csv'
-labels_path = '/Users/joshualunger/DeepEmotionBackup/data/resampled_annotations/av1o08'
+csv_path = '/Users/joshualunger/DeepEmotionBackup/data/derivative/PCA_local/sub-01_01.csv'
+labels_path = '/Users/joshualunger/DeepEmotionBackup/data/resampled_annotations/av1o6_resampled.tsv'
 
 # Load the PCA data
 pca_data = pd.read_csv(csv_path, header=None)
@@ -22,7 +22,7 @@ labels = labels_data['emotion'].to_numpy()
 labels = labels[:pca_array.shape[0]]  # Truncate labels if they are longer than the PCA data
 
 # Filter out rows where the emotion is '0' (no emotion)
-valid_indices = labels != '0'
+valid_indices = labels != 'NONE'
 pca_array_filtered = pca_array[valid_indices]
 labels_filtered = labels[valid_indices]
 
@@ -82,5 +82,5 @@ def update_view(angle):
 ani = FuncAnimation(fig, update_view, frames=np.arange(0, 360, 2), interval=100)
 
 # Save the animation as an mp4 file
-ani.save('/Users/joshualunger/DeepEmotionBackup/visuals/sub-20_run-08.gif', writer='ffmpeg')
+ani.save('/Users/joshualunger/DeepEmotionBackup/visuals/sub-01_run-01.gif', writer='ffmpeg')
 
