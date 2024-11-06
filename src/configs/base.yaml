@@ -51,6 +51,7 @@ data:
     'HAPPYFOR': 13, 'GLOATING': 14, 'SATISFACTION': 15, 'HOPE': 16, 
     'HATE': 17, 'RELIEF': 18, 'SHAME': 19, 'GRATIFICATION': 20
   }
+  transform: True # Apply transformation to data
   
 
 train:

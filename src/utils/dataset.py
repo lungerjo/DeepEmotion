@@ -35,9 +35,10 @@ class CrossSubjectDataset(Dataset):
         self.session_offsets = cfg.data.session_offsets  # Cumulative time offsets for each session
         self.verbose = cfg.verbose
         self.emotion_idx = cfg.data.emotion_idx
+        self.transform = cfg.data.transform
         self.observer_labels = pd.read_csv(self.label_path, sep='\t')
         self.data_files, self.data, self.num_timepoints = self._load_data()  # Load data and track number of timepoints per file
-        self.aligned_labels = self._align_labels()  
+        self.aligned_labels = self._align_labels()
 
 
     def _apply_offset(self, session_idx: int, timestamp: int) -> int:
@@ -114,8 +115,14 @@ class CrossSubjectDataset(Dataset):
                 print(f"Loading data from {file_path}")
             nii_data = nib.load(str(file_path)).get_fdata()  # Load the .nii.gz file using nibabel
             tensor_data = torch.tensor(nii_data)  # Convert the loaded data to torch tensor
+            
+            if self.transform:
+                tensor_data = (tensor_data - tensor_data.mean()) / (tensor_data.std() + 1e-5) # Normalize the data
+            
             data.append(tensor_data)
             num_timepoints.append(tensor_data.shape[-1])  # Record the number of time points (t) in the 4D tensor
+            
+        print(data[0]) # Check the first data
         
         return data_files, data, num_timepoints
 
@@ -201,7 +208,7 @@ def main(cfg: DictConfig) -> None:
 
     # Get DataLoader for all subjects and runs
     print(cfg.project_root)
-    dataloader = get_data_loader(cfg)
+    dataloader = get_data_loaders(cfg)
     if cfg.verbose: print("DataLoader initialized with preloaded data.")
     for data, labels in dataloader:
         # data is a batch of fMRI slices
