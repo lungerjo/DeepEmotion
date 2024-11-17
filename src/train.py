@@ -4,7 +4,7 @@ from omegaconf import DictConfig, OmegaConf
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from models.logistic_regression import DeepLogisticRegressionModel
+from models.logistic_regression import DeepLogisticRegressionModel, Small3DCNNClassifier
 import time
 import wandb
 from tqdm import tqdm
@@ -28,26 +28,25 @@ def main(cfg: DictConfig) -> None:
 
     input_dim = 132 * 175 * 48
     output_dim = len(cfg.data.emotion_idx)
-    model = DeepLogisticRegressionModel(input_dim, output_dim)
+    model = Small3DCNNClassifier(output_dim)
     model = model.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay=cfg.data.weight_decay)
 
-    for epoch in tqdm(range(cfg.train.epochs), desc="Training Epochs"):
+    for epoch in range(cfg.train.epochs):
         start_time = time.time()
         total_loss = 0.0
         correct_predictions = 0
         total_samples = 0
         
         model.train()
-        for batch, label in train_dataloader:
-            flattened = batch.flatten(start_dim=1).float().to(device)
-            label = label.to(device)
+        for batch, label in tqdm(train_dataloader):
+            
+            batch, label = batch.float().to(device), label.float().to(device)
 
-            output, hidden_activations = model(flattened)
+            output = model(batch)
 
             wandb.log({
-                "hidden_activations": hidden_activations.detach().cpu().numpy(),
                 "labels": label.detach().cpu().numpy()
             })
             
