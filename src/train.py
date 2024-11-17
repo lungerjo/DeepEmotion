@@ -74,10 +74,10 @@ def main(cfg: DictConfig) -> None:
         val_total = 0
         with torch.no_grad():
             for val_batch, val_label in val_dataloader:
-                val_flattened = val_batch.flatten(start_dim=1).float().to(device)
-                val_label = val_label.to(device)
+
+                val_batch, val_label = val_batch.float().to(device), val_label.float().to(device)
                 
-                val_output, _ = model(val_flattened)
+                val_output = model(val_batch)
                 _, val_predictions = torch.max(val_output, dim=1)
                 val_true_labels = val_label.argmax(dim=1)
                 
