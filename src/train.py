@@ -33,7 +33,7 @@ def main(cfg: DictConfig) -> None:
     model = DeepLogisticRegressionModel(input_dim, output_dim)  # Multi-class logistic regression
     model = model.to(device)
     criterion = nn.CrossEntropyLoss()  # Cross-entropy loss for multi-class classification
-    optimizer = optim.Adam(model.parameters(), lr=0.005)
+    optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay=cfg.data.weight_decay)
 
     # Training loop
     for epoch in range(cfg.train.epochs):  # Number of training epochs from config
