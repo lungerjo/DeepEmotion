@@ -35,7 +35,7 @@ class CrossSubjectDataset(Dataset):
         self.session_offsets = cfg.data.session_offsets  # Cumulative time offsets for each session
         self.verbose = cfg.verbose
         self.emotion_idx = cfg.data.emotion_idx
-        self.transform = cfg.data.transform
+        self.normalization = cfg.data.normalization
         self.observer_labels = pd.read_csv(self.label_path, sep='\t')
         self.data_files, self.data, self.num_timepoints = self._load_data()  # Load data and track number of timepoints per file
         self.aligned_labels = self._align_labels()
@@ -116,13 +116,11 @@ class CrossSubjectDataset(Dataset):
             nii_data = nib.load(str(file_path)).get_fdata()  # Load the .nii.gz file using nibabel
             tensor_data = torch.tensor(nii_data)  # Convert the loaded data to torch tensor
             
-            if self.transform:
+            if self.normalization:
                 tensor_data = (tensor_data - tensor_data.mean()) / (tensor_data.std() + 1e-5) # Normalize the data
             
             data.append(tensor_data)
             num_timepoints.append(tensor_data.shape[-1])  # Record the number of time points (t) in the 4D tensor
-            
-        print(data[0]) # Check the first data
         
         return data_files, data, num_timepoints
 
@@ -186,7 +184,7 @@ def get_data_loaders(cfg: DictConfig) -> DataLoader:
     dataset = CrossSubjectDataset(cfg)
 
     # Specify the train-validation split ratio
-    train_ratio = cfg.train.ratio
+    train_ratio = cfg.train.train_ratio
     train_size = int(train_ratio * len(dataset))
     val_size = len(dataset) - train_size
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])

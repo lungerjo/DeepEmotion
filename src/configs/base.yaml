@@ -51,15 +51,15 @@ data:
     'HAPPYFOR': 13, 'GLOATING': 14, 'SATISFACTION': 15, 'HOPE': 16, 
     'HATE': 17, 'RELIEF': 18, 'SHAME': 19, 'GRATIFICATION': 20
   }
-  normalization: False
+  normalization: True
   weight_decay: 1e-4
   
 
 train:
   epochs: 50
-  batch_size: 50
+  batch_size: 1
   shuffle: True
-  ratio: .8
+  train_ratio: .8
 
 verbose: True
 
