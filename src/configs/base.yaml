@@ -52,12 +52,12 @@ data:
     'HATE': 17, 'RELIEF': 18, 'SHAME': 19, 'GRATIFICATION': 20
   }
   normalization: True
-  weight_decay: 1e-4
+  weight_decay: 0 # 1e-4
   
 
 train:
   epochs: 50
-  batch_size: 50
+  batch_size: 5
   shuffle: True
   train_ratio: .8
 
