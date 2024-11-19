@@ -32,7 +32,7 @@ class CrossSubjectDataset(Dataset):
         self.observer_labels = pd.read_csv(self.label_path, sep='\t')
 
         # Load data and track number of timepoints per file
-        self.data_files, self.data, self.num_timepoints = self._load_data()
+        self.data, self.num_timepoints = self._load_data()
 
         # Align labels and filter out 'NONE' labels
         self.aligned_labels = self._align_labels()
@@ -102,7 +102,7 @@ class CrossSubjectDataset(Dataset):
             data.append(tensor_data)
             num_timepoints.append(tensor_data.shape[-1])  # Number of time points (t)
 
-        return data_files, data, num_timepoints
+        return data, num_timepoints
 
     def _create_index_mappings(self):
         """

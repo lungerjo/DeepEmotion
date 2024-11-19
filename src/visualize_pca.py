@@ -5,14 +5,17 @@ from matplotlib import colormaps
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.animation import FuncAnimation
 from matplotlib.colors import to_rgba  # Correct import for color conversion
+from collections import Counter
+
 
 # Paths to the CSV and label files
-csv_path = '/Users/joshualunger/DeepEmotionBackup/data/derivative/PCA_local/sub-01_01.csv'
+csv_path = '/Users/joshualunger/DeepEmotionBackup/data/derivative/PCA_local/sub-02_01.csv'
 labels_path = '/Users/joshualunger/DeepEmotionBackup/data/resampled_annotations/av1o6_resampled.tsv'
 
 # Load the PCA data
 pca_data = pd.read_csv(csv_path, header=None)
 pca_array = pca_data.to_numpy()
+print(f"labels length {pca_array.shape[0]} (including NONE)")
 
 # Load the labels data (emotion column)
 labels_data = pd.read_csv(labels_path, sep='\t')
@@ -24,7 +27,12 @@ labels = labels[:pca_array.shape[0]]  # Truncate labels if they are longer than 
 # Filter out rows where the emotion is '0' (no emotion)
 valid_indices = labels != 'NONE'
 pca_array_filtered = pca_array[valid_indices]
+print(f"labels length {pca_array_filtered.shape[0]} (including NONE)")
 labels_filtered = labels[valid_indices]
+
+emotion_counts = Counter(labels_filtered)
+
+print(dict(emotion_counts))
 
 # Get unique emotions and assign custom colors to specific emotions
 unique_emotions = np.unique(labels_filtered)

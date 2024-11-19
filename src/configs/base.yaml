@@ -39,22 +39,22 @@ hydra:
 
 data:
   data_path: "${project_root}/data/raw/derivatives/non-linear_anatomical_alignment" # use non-linear_anatomically_aligned data
-  label_path: "${project_root}/data/resampled_annotations/av1o8_resampled.tsv" # use first observers labels for now
-  sessions: ["01"]  # 00, 01, ...
+  label_path: "${project_root}/data/resampled_annotations/av1o6_resampled.tsv" # use first observers labels for now
+  sessions: ["01"]
   file_pattern_template: "*_ses-forrestgump_task-forrestgump_rec-dico7Tad2grpbold7TadNL_run-{}_bold.nii.gz"
-  subjects: ["sub-01"]  # Extendable if more subjects
+  subjects: ["sub-02"]
   session_offsets: [0, 902, 1784, 2660, 3636, 4560, 5438, 6522] # time offset at session start w.r.t. movie
   emotion_idx: {
     'NONE': 0, 'HAPPINESS': 1, 'FEAR': 2, 'SADNESS': 3, 'LOVE': 4,
     'ANGERRAGE': 5, 'CONTEMPT': 6, 'GRATITUDE': 7, 'ADMIRATION': 8,
     'COMPASSION': 9, 'PRIDE': 10, 'REMORSE': 11, 'DISAPPOINTMENT': 12,
     'HAPPYFOR': 13, 'GLOATING': 14, 'SATISFACTION': 15, 'HOPE': 16, 
-    'HATE': 17, 'RELIEF': 18, 'SHAME': 19, 'GRATIFICATION': 20
+    'HATE': 17, 'RELIEF': 18, 'SHAME': 19, 'GRATIFICATION': 20,
+    'FEARSCONFIRMED': 21
   }
   normalization: True
-  weight_decay: 0 # 1e-4
+  weight_decay: 0
   
-
 train:
   epochs: 50
   batch_size: 5
