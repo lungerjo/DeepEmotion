@@ -25,13 +25,14 @@ def main(cfg: DictConfig) -> None:
         print("Loading dataloader...")
         
     train_dataloader, val_dataloader = get_data_loaders(cfg)
-    print(f"Loaded Observations: {len(train_dataloader.dataset)}")
+    print(f"Loaded Observations: {len(train_dataloader.dataset) + len(val_dataloader.dataset)}")
     emotion_idx_inverse = {v: k for k, v in cfg.data.emotion_idx.items()}
-    label_counter = Counter(
-    label for _, one_hot_label in train_dataloader
-    for label in [emotion_idx_inverse[idx.item()] for idx in torch.argmax(one_hot_label, dim=1)]
+    total_label_counter = Counter(
+        label for dataloader in [train_dataloader, val_dataloader]
+        for _, one_hot_label in dataloader
+        for label in [emotion_idx_inverse[idx.item()] for idx in torch.argmax(one_hot_label, dim=1)]
     )
-    print(dict(label_counter))
+    print(dict(total_label_counter))
 
     input_dim = 132 * 175 * 48
     output_dim = len(cfg.data.emotion_idx)
