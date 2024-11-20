@@ -127,14 +127,14 @@ class CrossSubjectDataset(Dataset):
             offset = row['offset']
             global_time_idx = int(offset / 2)  # Convert offset to global time index
 
-            if self.verbose and idx <= 1:
-                print(f"idx, offset, global_idx {offset}, {row}, {global_time_idx}")
-
             # Find the data file index
-            data_file_idx = np.searchsorted(cumulative_timepoints, global_time_idx, side='right') - 1
+            data_file_idx = np.searchsorted(cumulative_timepoints, global_time_idx, side='left') - 1
+            if data_file_idx >= len(cumulative_timepoints) - 1:
+                data_file_idx -= 1
             time_idx_within_file = global_time_idx - cumulative_timepoints[data_file_idx]
 
             # Check for out-of-bounds time indices
+            
             if time_idx_within_file >= self.num_timepoints[data_file_idx] or time_idx_within_file < 0:
                 continue  # Skip invalid indices
 
