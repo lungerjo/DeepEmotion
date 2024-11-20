@@ -10,7 +10,7 @@ import hydra
 from omegaconf import DictConfig
 
 # Global variables
-session = 8
+session = 7
 subject = 1
 csv_path = f'/Users/joshualunger/DeepEmotionBackup/data/derivative/PCA_local/sub-0{subject}_0{session}.csv'
 labels_path = '/Users/joshualunger/DeepEmotionBackup/data/resampled_annotations/av1o6_resampled.tsv'
@@ -44,6 +44,8 @@ def main(cfg: DictConfig) -> None:
 
         # Ensure labels length matches the PCA data length (truncate if necessary)
         labels = labels_data['emotion'].to_numpy()
+        print(f"labels length {labels.shape}")
+        
 
         # Filter out rows where the emotion is 'NONE'
         valid_indices = labels != 'NONE'

@@ -36,8 +36,12 @@ class CrossSubjectDataset(Dataset):
 
         # Align labels and filter out 'NONE' labels
         self.aligned_labels = self._align_labels()
+        if self.verbose:
+            print(f"aligned_labels: shape {self.aligned_labels.shape[0]}")
+            print(f"ex: {self.aligned_labels.iloc[0]}")
         self.aligned_labels = self.aligned_labels[self.aligned_labels['emotion'] != 'NONE'].reset_index(drop=True)
-
+        if self.verbose:
+            print(f"filtered_labels: shape {self.aligned_labels.shape[0]}")
         # Create index mappings between labels and data slices
         self.index_mappings = self._create_index_mappings()
 
@@ -50,6 +54,8 @@ class CrossSubjectDataset(Dataset):
         aligned_labels = []
         for session_idx, session_length in enumerate(self.num_timepoints):
             session_start = sum(self.num_timepoints[:session_idx]) * 2  # Assuming 2-second TR
+            if self.verbose:
+                print(f"session_{session_idx}_start {session_start}")
             session_end = session_start + session_length * 2
 
             # Filter labels within this session's time range
@@ -102,6 +108,9 @@ class CrossSubjectDataset(Dataset):
             data.append(tensor_data)
             num_timepoints.append(tensor_data.shape[-1])  # Number of time points (t)
 
+        if self.verbose:
+            print(f"num_timepoints {num_timepoints}")
+
         return data, num_timepoints
 
     def _create_index_mappings(self):
@@ -113,9 +122,13 @@ class CrossSubjectDataset(Dataset):
         cumulative_timepoints = np.cumsum([0] + self.num_timepoints)
 
         for idx, row in self.aligned_labels.iterrows():
+            
             # Get the adjusted offset (assuming TR=2s)
             offset = row['offset']
             global_time_idx = int(offset / 2)  # Convert offset to global time index
+
+            if self.verbose and idx <= 1:
+                print(f"idx, offset, global_idx {offset}, {row}, {global_time_idx}")
 
             # Find the data file index
             data_file_idx = np.searchsorted(cumulative_timepoints, global_time_idx, side='right') - 1

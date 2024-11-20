@@ -40,7 +40,7 @@ hydra:
 data:
   data_path: "${project_root}/data/raw/derivatives/non-linear_anatomical_alignment" # use non-linear_anatomically_aligned data
   label_path: "${project_root}/data/resampled_annotations/av1o6_resampled.tsv" # use first observers labels for now
-  sessions: ["02"]
+  sessions: ["02", "03"]
   file_pattern_template: "*_ses-forrestgump_task-forrestgump_rec-dico7Tad2grpbold7TadNL_run-{}_bold.nii.gz"
   subjects: ["sub-02"]
   session_offsets: [0, 902, 1784, 2660, 3636, 4560, 5438, 6522] # time offset at session start w.r.t. movie
