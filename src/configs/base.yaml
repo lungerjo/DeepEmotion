@@ -1,15 +1,15 @@
 # base.yaml
 
+project_root: ${hydra:runtime.cwd}/..  # Define project_root first
+
 hydra:
   run:
-    dir: .  # Keep the working directory as the current directory
-  output_subdir: null  # Prevent creating the "outputs" subdirectory
-  
+    dir: ${project_root}/output  # Set Hydra run directory relative to project_root
+  output_subdir: null  # No additional subdirectory created within output
 
-  # Configure job logging (output only to stdout)
   job_logging:
     version: 1
-    disable_existing_loggers: False
+    disable_existing_loggers: True
     formatters:
       simple:
         format: '%(message)s'
@@ -17,15 +17,14 @@ hydra:
       console:
         class: logging.StreamHandler
         formatter: simple
-        stream: ext://sys.stdout  # Output to stdout, no file logging
+        stream: ext://sys.stdout
     root:
-      level: INFO  # Print info level logs and higher
-      handlers: [console]  # Only use console handler
-  
-  # Configure hydra internal logging (output only to stdout)
+      level: INFO
+      handlers: [console]
+
   hydra_logging:
     version: 1
-    disable_existing_loggers: False
+    disable_existing_loggers: True
     formatters:
       simple:
         format: '%(message)s'
@@ -33,17 +32,34 @@ hydra:
       console:
         class: logging.StreamHandler
         formatter: simple
-        stream: ext://sys.stdout  # Output to stdout
+        stream: ext://sys.stdout
     root:
-      level: INFO  # Print info level logs and higher
-      handlers: [console]  # Only use console handler
+      level: INFO
+      handlers: [console]
 
 data:
-  project_root: ${hydra:runtime.config_dir}/../..  # Navigate two levels up to reach the project root
-  derivatives_path: "${data.project_root}/data/raw/derivatives/non-linear_anatomical_alignment"
-  runs: ["01", "02"]  # 2 run for now
+  data_path: "${project_root}/data/raw/derivatives/non-linear_anatomical_alignment" # use non-linear_anatomically_aligned data
+  label_path: "${project_root}/data/resampled_annotations/av1o6_resampled.tsv" # use first observers labels for now
+  sessions: ["01", "02"] # must start from 01, 02, ... 08
   file_pattern_template: "*_ses-forrestgump_task-forrestgump_rec-dico7Tad2grpbold7TadNL_run-{}_bold.nii.gz"
-  subjects: ["sub-01", "sub-02"]  # Extendable if more subjects
+  subjects: ["sub-02"]
+  session_offsets: [0, 902, 1784, 2660, 3636, 4560, 5438, 6522] # time offset at session start w.r.t. movie
+  emotion_idx: {
+    'NONE': 0, 'HAPPINESS': 1, 'FEAR': 2, 'SADNESS': 3, 'LOVE': 4,
+    'ANGERRAGE': 5, 'CONTEMPT': 6, 'GRATITUDE': 7, 'ADMIRATION': 8,
+    'COMPASSION': 9, 'PRIDE': 10, 'REMORSE': 11, 'DISAPPOINTMENT': 12,
+    'HAPPYFOR': 13, 'GLOATING': 14, 'SATISFACTION': 15, 'HOPE': 16, 
+    'HATE': 17, 'RELIEF': 18, 'SHAME': 19, 'GRATIFICATION': 20,
+    'FEARSCONFIRMED': 21
+  }
+  normalization: False
+  weight_decay: 0
+  
+train:
+  epochs: 50
+  batch_size: 5
+  shuffle: True
+  train_ratio: .8
 
 verbose: True
 

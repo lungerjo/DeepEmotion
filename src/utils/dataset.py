@@ -1,112 +1,182 @@
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 from pathlib import Path
 import nibabel as nib
 import hydra
 from omegaconf import DictConfig
 from typing import List, Tuple
 
-
 import torch
 from torch.utils.data import Dataset
 from pathlib import Path
 import nibabel as nib
 from typing import List, Tuple
-
+import pandas as pd
+import numpy as np
 
 class CrossSubjectDataset(Dataset):
-    def __init__(self, data_root: Path, subjects: List[str], file_pattern_template: str, runs: List[str], verbose: bool = False):
+    def __init__(self, cfg: DictConfig):
         """
-        Initialize the dataset to load all subjects and all runs.
+        Initialize the dataset, load all subjects, all runs, align labels by observer,
+        and exclude 'NONE' labels along with their corresponding data slices.
+        """
+        self.data_path = Path(cfg.data.data_path).resolve()  # Ensure absolute path
+        self.label_path = Path(cfg.data.label_path).resolve()
+        self.subjects = cfg.data.subjects
+        self.file_pattern_template = cfg.data.file_pattern_template
+        self.sessions = cfg.data.sessions
+        self.session_offsets = cfg.data.session_offsets  # Cumulative time offsets for alignment
+        self.verbose = cfg.verbose
+        self.emotion_idx = cfg.data.emotion_idx
+        self.normalization = cfg.data.normalization
+        self.observer_labels = pd.read_csv(self.label_path, sep='\t')
 
-        Args:
-        - data_root: The root path to the data directory.
-        - subjects: List of subject directories to include.
-        - file_pattern_template: The file pattern template that will be used to find the files.
-        - runs: List of runs (e.g., ["01", "02", "03"]) to include.
-        - verbose: Whether to print verbose output during dataset loading.
-        """
-        self.data_root = Path(data_root).resolve()  # Ensure absolute path
-        self.subjects = subjects
-        self.file_pattern_template = file_pattern_template
-        self.runs = runs
-        self.verbose = verbose
-        self.data_files, self.data, self.num_timepoints = self._load_data()  # Load data and track number of timepoints per file
+        # Load data and track number of timepoints per file
+        self.data, self.num_timepoints = self._load_data()
+
+        # Align labels and filter out 'NONE' labels
+        self.aligned_labels = self._align_labels()
+        if self.verbose:
+            print(f"aligned_labels: shape {self.aligned_labels.shape[0]}")
+            print(f"ex: {self.aligned_labels.iloc[0]}")
+        self.aligned_labels = self.aligned_labels[self.aligned_labels['emotion'] != 'NONE'].reset_index(drop=True)
+        if self.verbose:
+            print(f"filtered_labels: shape {self.aligned_labels.shape[0]}")
+        # Create index mappings between labels and data slices
+        self.index_mappings = self._create_index_mappings()
+
+    def _apply_offset(self, session_idx: int, timestamp: int) -> int:
+        """Applies the cumulative time offset based on the session index."""
+        return timestamp + self.session_offsets[session_idx]
+
+    def _align_labels(self):
+        """Aligns the observer's labels based on time offsets and session-based fMRI offsets."""
+        aligned_labels = []
+        for session_idx, session_length in enumerate(self.num_timepoints):
+            session_start = sum(self.num_timepoints[:session_idx]) * 2  # Assuming 2-second TR
+            if self.verbose:
+                print(f"session_{session_idx}_start {session_start}")
+            session_end = session_start + session_length * 2
+
+            # Filter labels within this session's time range
+            session_labels = self.observer_labels[
+                (self.observer_labels['offset'] >= session_start) &
+                (self.observer_labels['offset'] < session_end)
+            ].copy()
+
+            # Apply the session time offset
+            session_labels['offset'] = session_labels['offset'].apply(
+                lambda t: self._apply_offset(session_idx, t)
+            )
+
+            aligned_labels.append(session_labels)
+
+        return pd.concat(aligned_labels, ignore_index=True)
 
     def _find_files(self) -> List[Path]:
-        """
-        Searches for files in all subject directories and runs based on the file pattern.
-
-        Returns:
-        - files: A list of file paths that match the file pattern.
-        """
+        """Searches for files in all subject directories and runs based on the file pattern."""
         files = []
         if self.verbose:
             print(f"Finding files")
         for subject in self.subjects:
-            for run in self.runs:
-                subject_dir = self.data_root / subject / "ses-forrestgump/func"
-                file_pattern = self.file_pattern_template.format(run)
-                matched_files = list(subject_dir.rglob(file_pattern))  # Recursively find files matching the pattern
+            for session in self.sessions:
+                subject_dir = self.data_path / subject / "ses-forrestgump/func"
+                if self.verbose:
+                    print(f"Looking in {subject_dir}")
+                file_pattern = self.file_pattern_template.format(session)
+                matched_files = list(subject_dir.rglob(file_pattern))
                 files.extend(matched_files)
         if self.verbose:
             print(f"{len(files)} files found")
         return files
 
     def _load_data(self) -> Tuple[List[Path], List[torch.Tensor], List[int]]:
-        """
-        Loads all the .nii.gz data into memory and tracks the number of timepoints (t) per file.
-
-        Returns:
-        - data_files: List of file paths corresponding to the loaded data.
-        - data: List of 4D tensors loaded from the .nii.gz files.
-        - num_timepoints: List of the number of timepoints (t) for each file.
-        """
+        """Loads all the .nii.gz data into memory and tracks the number of timepoints per file."""
         data_files = self._find_files()
         data = []
         num_timepoints = []
-        
+
         for file_path in data_files:
             if self.verbose:
                 print(f"Loading data from {file_path}")
-            nii_data = nib.load(str(file_path)).get_fdata()  # Load the .nii.gz file using nibabel
-            tensor_data = torch.tensor(nii_data)  # Convert the loaded data to torch tensor
+            nii_data = nib.load(str(file_path)).get_fdata()
+            tensor_data = torch.tensor(nii_data)
+
+            if self.normalization:
+                tensor_data = (tensor_data - tensor_data.mean()) / (tensor_data.std() + 1e-5)
+
             data.append(tensor_data)
-            num_timepoints.append(tensor_data.shape[-1])  # Record the number of time points (t) in the 4D tensor
-        
-        return data_files, data, num_timepoints
+            num_timepoints.append(tensor_data.shape[-1])  # Number of time points (t)
+
+        if self.verbose:
+            print(f"num_timepoints {num_timepoints}")
+
+        return data, num_timepoints
+
+    def _create_index_mappings(self):
+        """
+        Creates a mapping from dataset indices to data file indices and time indices,
+        excluding 'NONE' labels and their corresponding data slices.
+        """
+        index_mappings = []
+        cumulative_timepoints = np.cumsum([0] + self.num_timepoints)
+
+        for idx, row in self.aligned_labels.iterrows():
+            
+            # Get the adjusted offset (assuming TR=2s)
+            offset = row['offset']
+            global_time_idx = int(offset / 2)  # Convert offset to global time index
+
+            # Find the data file index
+            data_file_idx = np.searchsorted(cumulative_timepoints, global_time_idx, side='left') - 1
+            if data_file_idx >= len(cumulative_timepoints) - 1:
+                data_file_idx -= 1
+            time_idx_within_file = global_time_idx - cumulative_timepoints[data_file_idx]
+
+            # Check for out-of-bounds time indices
+            
+            if time_idx_within_file >= self.num_timepoints[data_file_idx] or time_idx_within_file < 0:
+                continue  # Skip invalid indices
+
+            label = row['emotion']
+            label_idx = self.emotion_idx[label]
+
+            index_mappings.append({
+                'data_file_idx': data_file_idx,
+                'time_idx': time_idx_within_file,
+                'label_idx': label_idx
+            })
+
+        return index_mappings
 
     def __len__(self) -> int:
+        """Returns the number of valid data points (excluding 'NONE' labels)."""
+        return len(self.index_mappings)
+
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Returns the total number of timepoints across all files.
+        Returns a data slice and one-hot encoded label for the given index.
         """
-        return sum(self.num_timepoints)
+        mapping = self.index_mappings[idx]
+        data_file_idx = mapping['data_file_idx']
+        time_idx = mapping['time_idx']
+        label_idx = mapping['label_idx']
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, str]:
-        """
-        Returns a single time slice from the dataset.
+        data_slice = self.data[data_file_idx][..., time_idx]
 
-        Args:
-        - idx: The index of the data to retrieve.
+        # Ensure data_slice is a 3D tensor
+        if data_slice.ndim == 3:
+            data_slice = data_slice.unsqueeze(0)  # Add a channel dimension
 
-        Returns:
-        - data_slice: A 3D tensor representing a single time slice with shape [1, x_shape, y_shape, z_shape].
-        - file_path: The path to the file from which the data was loaded.
-        """
-        # Find the file and corresponding time slice for the given index
-        cumulative_timepoints = 0
-        for i, timepoints in enumerate(self.num_timepoints):
-            if idx < cumulative_timepoints + timepoints:
-                time_idx = idx - cumulative_timepoints  # Get the time index within the current file
-                data_slice = self.data[i][..., time_idx]  # Extract the 3D slice for the given timepoint
-                data_slice = data_slice.unsqueeze(0)  # Add the singleton dimension to match [1, x_shape, y_shape, z_shape]
-                return data_slice, str(self.data_files[i])
-            cumulative_timepoints += timepoints
+        one_hot_label = torch.nn.functional.one_hot(
+            torch.tensor(label_idx), num_classes=len(self.emotion_idx)
+        ).float()
 
-        raise IndexError(f"Index {idx} out of range")
+        return data_slice, one_hot_label
 
+    
 
-def get_data_loader(cfg: DictConfig, batch_size: int = 1, shuffle: bool = False) -> DataLoader:
+def get_data_loaders(cfg: DictConfig) -> DataLoader:
     """
     Creates and returns a DataLoader for the fMRI dataset across all subjects and runs.
 
@@ -118,20 +188,20 @@ def get_data_loader(cfg: DictConfig, batch_size: int = 1, shuffle: bool = False)
     Returns:
     - dataloader: The DataLoader for the combined dataset across all subjects and runs.
     """
-    derivatives_path = Path(cfg.data.derivatives_path).resolve()
-    print(derivatives_path)
     
     # Initialize dataset which will load all data into memory
-    dataset = CrossSubjectDataset(data_root=derivatives_path, 
-                                  subjects=cfg.data.subjects, 
-                                  file_pattern_template=cfg.data.file_pattern_template, 
-                                  runs=cfg.data.runs,
-                                  verbose=cfg.verbose)
+    dataset = CrossSubjectDataset(cfg)
+
+    # Specify the train-validation split ratio
+    train_ratio = cfg.train.train_ratio
+    train_size = int(train_ratio * len(dataset))
+    val_size = len(dataset) - train_size
+    train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
     
     # Create DataLoader from the preloaded dataset
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
-    return dataloader
-
+    train_dataloader = DataLoader(train_dataset, batch_size = cfg.train.batch_size, shuffle = cfg.train.shuffle)
+    val_dataloader = DataLoader(val_dataset, batch_size = cfg.train.batch_size, shuffle = cfg.train.shuffle)
+    return train_dataloader, val_dataloader
 
 
 @hydra.main(config_path="../configs", config_name="base", version_base="1.2")
@@ -144,8 +214,14 @@ def main(cfg: DictConfig) -> None:
     """
 
     # Get DataLoader for all subjects and runs
-    dataloader = get_data_loader(cfg)
+    print(cfg.project_root)
+    dataloader = get_data_loaders(cfg)
     if cfg.verbose: print("DataLoader initialized with preloaded data.")
+    for data, labels in dataloader:
+        # data is a batch of fMRI slices
+        # labels is a batch of corresponding emotion labels
+        print(data.shape, labels.shape)
+    
 
 
 if __name__ == "__main__":
