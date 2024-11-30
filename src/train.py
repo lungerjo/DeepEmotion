@@ -19,7 +19,7 @@ def main(cfg: DictConfig) -> None:
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
     wandb.init(project="DeepEmotion", config=cfg_dict)
 
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if cfg.verbose:
         print(f"Device: {device}")
         print("Loading dataloader...")
