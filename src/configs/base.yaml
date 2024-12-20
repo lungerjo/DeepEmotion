@@ -39,6 +39,7 @@ hydra:
 
 data:
   data_path: "${project_root}/data/raw/derivatives/non-linear_anatomical_alignment" # use non-linear_anatomically_aligned data
+  zarr_path: "${project_root}/dataset.zarr"
   label_path: "${project_root}/data/resampled_annotations/av1o6_resampled.tsv" # use first observers labels for now
   sessions: ["01", "02", "03", "04", "05", "06", "07", "08"] # must start from 01, 02, ... 08
   file_pattern_template: "*_ses-forrestgump_task-forrestgump_rec-dico7Tad2grpbold7TadNL_run-{}_bold.nii.gz"
