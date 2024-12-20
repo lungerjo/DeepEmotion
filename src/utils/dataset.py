@@ -5,6 +5,8 @@ import nibabel as nib
 import hydra
 from omegaconf import DictConfig
 from typing import List, Tuple
+from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
+import psutil
 
 import torch
 from torch.utils.data import Dataset
@@ -14,13 +16,26 @@ from typing import List, Tuple
 import pandas as pd
 import numpy as np
 
+def log_memory_usage():
+    """Logs CPU and GPU memory usage."""
+
+    # CPU Memory
+    mem = psutil.virtual_memory()
+    print(f"CPU Memory - Free: {mem.free / 1e6:.2f} MB, Used: {mem.used / 1e6:.2f} MB, Total: {mem.total / 1e6:.2f} MB")
+    
+    # GPU Memory
+    nvmlInit()
+    handle = nvmlDeviceGetHandleByIndex(0)  # GPU index
+    info = nvmlDeviceGetMemoryInfo(handle)
+    print(f"GPU Memory - Free: {info.free / 1e6:.2f} MB, Used: {info.used / 1e6:.2f} MB, Total: {info.total / 1e6:.2f} MB")
+
 class CrossSubjectDataset(Dataset):
-    def __init__(self, cfg: DictConfig):
+    def __init__(self, cfg):
         """
-        Initialize the dataset, load all subjects, all runs, align labels by observer,
-        and exclude 'NONE' labels along with their corresponding data slices.
+        Initialize the dataset without loading data slices into memory.
+        Data slices will be loaded on-the-fly during batch loading in __getitem__.
         """
-        self.data_path = Path(cfg.data.data_path).resolve()  # Ensure absolute path
+        self.data_path = Path(cfg.data.data_path).resolve()
         self.label_path = Path(cfg.data.label_path).resolve()
         self.subjects = cfg.data.subjects
         self.file_pattern_template = cfg.data.file_pattern_template
@@ -31,32 +46,53 @@ class CrossSubjectDataset(Dataset):
         self.normalization = cfg.data.normalization
         self.observer_labels = pd.read_csv(self.label_path, sep='\t')
 
-        # Load data and track number of timepoints per file
-        self.data, self.num_timepoints = self._load_data()
+        if self.verbose:
+            log_memory_usage()
+
+        # Find data files and get number of timepoints
+        self.data_files_per_session, self.num_timepoints_per_session = self._load_data_info()
+
+        # Flatten the data files and num_timepoints lists
+        self.data_files = []
+        self.num_timepoints = []
+        for session_files, session_num_timepoints in zip(self.data_files_per_session, self.num_timepoints_per_session):
+            self.data_files.extend(session_files)
+            self.num_timepoints.extend(session_num_timepoints)
 
         # Align labels and filter out 'NONE' labels
         self.aligned_labels = self._align_labels()
         if self.verbose:
             print(f"aligned_labels: shape {self.aligned_labels.shape[0]}")
-            print(f"ex: {self.aligned_labels.iloc[0]}")
         self.aligned_labels = self.aligned_labels[self.aligned_labels['emotion'] != 'NONE'].reset_index(drop=True)
         if self.verbose:
             print(f"filtered_labels: shape {self.aligned_labels.shape[0]}")
+
         # Create index mappings between labels and data slices
         self.index_mappings = self._create_index_mappings()
 
-    def _apply_offset(self, session_idx: int, timestamp: int) -> int:
-        """Applies the cumulative time offset based on the session index."""
-        return timestamp + self.session_offsets[session_idx]
-
     def _align_labels(self):
-        """Aligns the observer's labels based on time offsets and session-based fMRI offsets."""
+        """
+        Align the observer's labels based on the provided session_offsets and the first subject's timepoints.
+        """
         aligned_labels = []
-        for session_idx, session_length in enumerate(self.num_timepoints):
-            session_start = sum(self.num_timepoints[:session_idx]) * 2  # Assuming 2-second TR
+        TR = 2  # seconds per TR
+
+        for session_idx, session_num_timepoints in enumerate(self.num_timepoints_per_session):
+            # Use just the first subject’s time for calculating the session length
+            # Assumes all subjects have the same number of timepoints per session.
+            session_total_timepoints = session_num_timepoints[0]
+
+            session_start = self.session_offsets[session_idx]
+
+            if session_idx < len(self.session_offsets) - 1:
+                # If next offset is defined, that gives us session_end directly
+                session_end = self.session_offsets[session_idx + 1]
+            else:
+                # Last session: compute end from timepoints
+                session_end = session_start + session_total_timepoints * TR
+
             if self.verbose:
-                print(f"session_{session_idx}_start {session_start}")
-            session_end = session_start + session_length * 2
+                print(f"session_{session_idx}_start {session_start}, end {session_end}")
 
             # Filter labels within this session's time range
             session_labels = self.observer_labels[
@@ -64,54 +100,56 @@ class CrossSubjectDataset(Dataset):
                 (self.observer_labels['offset'] < session_end)
             ].copy()
 
-            # Apply the session time offset
-            session_labels['offset'] = session_labels['offset'].apply(
-                lambda t: self._apply_offset(session_idx, t)
-            )
+            # If you need to apply offset to labels for alignment (optional)
+            # session_labels['offset'] = session_labels['offset'].apply(
+            #     lambda t: self._apply_offset(session_idx, t)
+            # )
 
             aligned_labels.append(session_labels)
 
         return pd.concat(aligned_labels, ignore_index=True)
 
-    def _find_files(self) -> List[Path]:
+
+    def _find_files(self) -> List[List[Path]]:
         """Searches for files in all subject directories and runs based on the file pattern."""
-        files = []
+        files_per_session = []
         if self.verbose:
             print(f"Finding files")
-        for subject in self.subjects:
-            for session in self.sessions:
+        for session in self.sessions:
+            session_files = []
+            for subject in self.subjects:
                 subject_dir = self.data_path / subject / "ses-forrestgump/func"
                 if self.verbose:
                     print(f"Looking in {subject_dir}")
                 file_pattern = self.file_pattern_template.format(session)
                 matched_files = list(subject_dir.rglob(file_pattern))
-                files.extend(matched_files)
+                session_files.extend(matched_files)
+            files_per_session.append(session_files)
         if self.verbose:
-            print(f"{len(files)} files found")
-        return files
+            print(f"{sum(len(files) for files in files_per_session)} files found")
+        return files_per_session
 
-    def _load_data(self) -> Tuple[List[Path], List[torch.Tensor], List[int]]:
-        """Loads all the .nii.gz data into memory and tracks the number of timepoints per file."""
-        data_files = self._find_files()
-        data = []
-        num_timepoints = []
+    def _load_data_info(self):
+        """Gets the number of timepoints for each data file without loading data into memory."""
+        files_per_session = self._find_files()
+        data_files_per_session = []
+        num_timepoints_per_session = []
 
-        for file_path in data_files:
-            if self.verbose:
-                print(f"Loading data from {file_path}")
-            nii_data = nib.load(str(file_path)).get_fdata()
-            tensor_data = torch.tensor(nii_data)
-
-            if self.normalization:
-                tensor_data = (tensor_data - tensor_data.mean()) / (tensor_data.std() + 1e-5)
-
-            data.append(tensor_data)
-            num_timepoints.append(tensor_data.shape[-1])  # Number of time points (t)
+        for session_idx, session_files in enumerate(files_per_session):
+            session_data_files = []
+            session_num_timepoints = []
+            for file_path in session_files:
+                nii_img = nib.load(str(file_path))
+                shape = nii_img.shape  # (x, y, z, t)
+                session_num_timepoints.append(shape[-1])  # Number of timepoints (t)
+                session_data_files.append(file_path)
+            data_files_per_session.append(session_data_files)
+            num_timepoints_per_session.append(session_num_timepoints)
 
         if self.verbose:
-            print(f"num_timepoints {num_timepoints}")
+            print(f"num_timepoints_per_session {num_timepoints_per_session}")
 
-        return data, num_timepoints
+        return data_files_per_session, num_timepoints_per_session
 
     def _create_index_mappings(self):
         """
@@ -122,19 +160,17 @@ class CrossSubjectDataset(Dataset):
         cumulative_timepoints = np.cumsum([0] + self.num_timepoints)
 
         for idx, row in self.aligned_labels.iterrows():
-            
             # Get the adjusted offset (assuming TR=2s)
             offset = row['offset']
             global_time_idx = int(offset / 2)  # Convert offset to global time index
 
             # Find the data file index
-            data_file_idx = np.searchsorted(cumulative_timepoints, global_time_idx, side='left') - 1
+            data_file_idx = np.searchsorted(cumulative_timepoints, global_time_idx, side='right') - 1
             if data_file_idx >= len(cumulative_timepoints) - 1:
                 data_file_idx -= 1
             time_idx_within_file = global_time_idx - cumulative_timepoints[data_file_idx]
 
             # Check for out-of-bounds time indices
-            
             if time_idx_within_file >= self.num_timepoints[data_file_idx] or time_idx_within_file < 0:
                 continue  # Skip invalid indices
 
@@ -155,6 +191,7 @@ class CrossSubjectDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """
+        Loads the data slice from .nii.gz file on-the-fly when the batch is loaded.
         Returns a data slice and one-hot encoded label for the given index.
         """
         mapping = self.index_mappings[idx]
@@ -162,7 +199,19 @@ class CrossSubjectDataset(Dataset):
         time_idx = mapping['time_idx']
         label_idx = mapping['label_idx']
 
-        data_slice = self.data[data_file_idx][..., time_idx]
+        data_file_path = self.data_files[data_file_idx]
+
+        # Load data slice using memory-mapped access
+        nii_img = nib.load(str(data_file_path), mmap=True)
+        data_slice = nii_img.dataobj[..., time_idx]
+        # Convert to numpy array (loads only the slice into memory)
+        data_slice = np.array(data_slice, dtype=np.float32)
+
+        # Optionally apply normalization
+        if self.normalization:
+            data_slice = (data_slice - np.mean(data_slice)) / (np.std(data_slice) + 1e-5)
+
+        data_slice = torch.tensor(data_slice, dtype=torch.float32)
 
         # Ensure data_slice is a 3D tensor
         if data_slice.ndim == 3:
@@ -174,7 +223,6 @@ class CrossSubjectDataset(Dataset):
 
         return data_slice, one_hot_label
 
-    
 
 def get_data_loaders(cfg: DictConfig) -> DataLoader:
     """
