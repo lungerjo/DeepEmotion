@@ -8,6 +8,7 @@ from models.logistic_regression import LogisticRegressionModel, Small3DCNNClassi
 import time
 import wandb
 from collections import Counter
+from tqdm import tqdm
 
 @hydra.main(config_path="./configs", config_name="base", version_base="1.2")
 def main(cfg: DictConfig) -> None:
@@ -26,6 +27,7 @@ def main(cfg: DictConfig) -> None:
         
     train_dataloader, val_dataloader = get_data_loaders(cfg)
     print(f"Loaded Observations: {len(train_dataloader.dataset) + len(val_dataloader.dataset)}")
+    """
     emotion_idx_inverse = {v: k for k, v in cfg.data.emotion_idx.items()}
     total_label_counter = Counter(
         label for dataloader in [train_dataloader, val_dataloader]
@@ -33,8 +35,8 @@ def main(cfg: DictConfig) -> None:
         for label in [emotion_idx_inverse[idx.item()] for idx in torch.argmax(one_hot_label, dim=1)]
     )
     print(dict(total_label_counter))
+    """
 
-    input_dim = 132 * 175 * 48
     output_dim = len(cfg.data.emotion_idx)
     model = Small3DCNNClassifier(output_dim=output_dim)
     model = model.to(device)
@@ -48,7 +50,7 @@ def main(cfg: DictConfig) -> None:
         total_samples = 0
         
         model.train()
-        for batch, label in train_dataloader:
+        for batch, label in tqdm(train_dataloader):
             
             batch, label = batch.float().to(device), label.float().to(device)
 

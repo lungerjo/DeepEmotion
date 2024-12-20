@@ -40,9 +40,9 @@ hydra:
 data:
   data_path: "${project_root}/data/raw/derivatives/non-linear_anatomical_alignment" # use non-linear_anatomically_aligned data
   label_path: "${project_root}/data/resampled_annotations/av1o6_resampled.tsv" # use first observers labels for now
-  sessions: ["01", "02"] # must start from 01, 02, ... 08
+  sessions: ["01", "02", "03", "04", "05", "06", "07", "08"] # must start from 01, 02, ... 08
   file_pattern_template: "*_ses-forrestgump_task-forrestgump_rec-dico7Tad2grpbold7TadNL_run-{}_bold.nii.gz"
-  subjects: ["sub-02"]
+  subjects: ["sub-01", "sub-02"]
   session_offsets: [0, 902, 1784, 2660, 3636, 4560, 5438, 6522] # time offset at session start w.r.t. movie
   emotion_idx: {
     'NONE': 0, 'HAPPINESS': 1, 'FEAR': 2, 'SADNESS': 3, 'LOVE': 4,
@@ -57,7 +57,7 @@ data:
   
 train:
   epochs: 50
-  batch_size: 5
+  batch_size: 50
   shuffle: True
   train_ratio: .8
 
