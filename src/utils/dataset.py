@@ -85,7 +85,7 @@ class ZarrDataset(Dataset):
         if self.aligned_labels is not None:
             subset = self.aligned_labels[
                 (self.aligned_labels['file_index'] == volume_idx) &
-                (self.aligned_labels['time_index'] == time_idx)
+                (self.aligned_labels['row_index'] == row_idx)
             ]
             if not subset.empty:
                 time_offset = subset['time_offset'].iloc[0]
@@ -96,7 +96,7 @@ class ZarrDataset(Dataset):
             "global_idx": global_idx,  # Global index across all valid timepoints
             "volume_idx": volume_idx,
             "session_idx": session_idx,
-            "local_index": time_idx,  # local index within the volume
+            "local_index": row_idx,  # local index within the volume
             "time_offset": time_offset,  
             "data_tensor": data_tensor,
             "label_tensor": label_tensor,

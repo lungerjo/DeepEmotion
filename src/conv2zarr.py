@@ -32,13 +32,19 @@ class CrossSubjectDataset:
             self.data_files.extend(session_files)
             self.num_timepoints.extend(session_num_timepoints)
 
+        if self.verbose:
+            print(f"self.data_files_per_session {self.data_files_per_session}")
+            print(f"self.num_timepoints_per_session {self.num_timepoints_per_session}")
+
         # Align labels and filter out 'NONE' labels
         self.aligned_labels = self._align_labels()
         if self.verbose:
             print(f"aligned_labels: shape {self.aligned_labels.shape[0]}")
+            print(self.aligned_labels.head())
         self.aligned_labels = self.aligned_labels[self.aligned_labels['emotion'] != 'NONE'].reset_index(drop=True)
         if self.verbose:
             print(f"filtered_labels: shape {self.aligned_labels.shape[0]}")
+            print(self.aligned_labels.head())
 
         # Create index mappings between labels and data slices
         self.index_mappings = self._create_index_mappings()
@@ -70,7 +76,9 @@ class CrossSubjectDataset:
 
             aligned_labels.append(session_labels)
 
-        return pd.concat(aligned_labels, ignore_index=True)
+        aligned_labels = pd.concat(aligned_labels, ignore_index=True)
+
+        return aligned_labels
 
     def _find_files(self):
         """Searches for files in all subject directories and runs based on the file pattern."""
@@ -129,10 +137,10 @@ class CrossSubjectDataset:
             data_file_idx = np.searchsorted(cumulative_timepoints, global_time_idx, side='right') - 1
             if data_file_idx >= len(cumulative_timepoints) - 1:
                 data_file_idx -= 1
-            time_idx_within_file = global_time_idx - cumulative_timepoints[data_file_idx]
+            row_idx_within_file = global_time_idx - cumulative_timepoints[data_file_idx]
 
             # Check for out-of-bounds
-            if time_idx_within_file >= self.num_timepoints[data_file_idx] or time_idx_within_file < 0:
+            if row_idx_within_file >= self.num_timepoints[data_file_idx] or row_idx_within_file < 0:
                 continue  # Skip invalid indices
 
             label = row['emotion']
@@ -142,9 +150,14 @@ class CrossSubjectDataset:
             index_mappings.append({
                 'aligned_label_idx': idx,
                 'data_file_idx': data_file_idx,
-                'time_idx': time_idx_within_file,
+                'row_idx': row_idx_within_file,
                 'label_idx': label_idx
             })
+
+        if self.verbose:
+            print(f"mappings created: {len(index_mappings)}")
+            for mapping in index_mappings[:5]:
+                print(mapping)
 
         return index_mappings
 
@@ -161,9 +174,6 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
         print(f"Number of valid samples (excluding 'NONE' labels): {len(dataset.index_mappings)}")
         print(f"Subjects: {dataset.subjects}")
         print(f"Sessions: {dataset.sessions}")
-        print("Available emotions and their indices:")
-        for emotion, idx in dataset.emotion_idx.items():
-            print(f"  {emotion}: {idx}")
 
     # Extract metadata from the dataset
     data_files = dataset.data_files       # List[Path]
@@ -216,7 +226,7 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
     # Rename columns for clarity
     merged_labels = merged_labels.rename(columns={
         'data_file_idx': 'file_index',
-        'time_idx': 'time_index',
+        'row_idx': 'row_index',
         'offset': 'time_offset'
     })
 
@@ -344,7 +354,6 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
 
     if cfg.verbose:
         print(f"Zarr dataset successfully written to {output_zarr_path}!")
-
 
 
 @hydra.main(config_path="./configs", config_name="base", version_base="1.2")
