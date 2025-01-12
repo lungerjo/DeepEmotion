@@ -58,7 +58,7 @@ data:
   
 train:
   epochs: 50
-  batch_size: 10
+  batch_size: 25
   shuffle: True
   train_ratio: .8
 

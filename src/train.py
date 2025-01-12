@@ -91,7 +91,7 @@ def main(cfg: DictConfig) -> None:
                 val_data = data.float().to(device)  # Ensure data is float for model input
                 val_labels = labels.long().to(device)  # Ensure labels are integers for CrossEntropyLoss
                 
-                val_output = model(val_batch)
+                val_output = model(val_data)
                 _, val_predictions = torch.max(val_output, dim=1)
                 val_true_labels = val_labels.argmax(dim=1)
                 
