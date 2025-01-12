@@ -1,0 +1,27 @@
+Device: cuda
+Loading dataloader...
+Zarr Dataset: /home/paperspace/DeepEmotion/src/../dataset.zarr
+Dataset contains 16 files.
+Spatial dimensions: (132, 175, 48)
+Maximum timepoints per file: 542
+Subjects: ['sub-01' 'sub-02']
+Sessions: ['01' '02' '03' '04' '05' '06' '07' '08']
+Emotion categories: ['NONE', 'HAPPINESS', 'FEAR', 'SADNESS', 'LOVE', 'ANGERRAGE', 'CONTEMPT', 'GRATITUDE', 'ADMIRATION', 'COMPASSION', 'PRIDE', 'REMORSE', 'DISAPPOINTMENT', 'HAPPYFOR', 'GLOATING', 'SATISFACTION', 'HOPE', 'HATE', 'RELIEF', 'SHAME', 'GRATIFICATION', 'FEARSCONFIRMED']
+Total valid labeled timepoints: 1496
+Zarr Path: /home/paperspace/DeepEmotion/src/../dataset.zarr
+Loaded Observations: 20
+Error executing job with overrides: []
+Traceback (most recent call last):
+  File "/home/paperspace/DeepEmotion/src/train vgg.py", line 40, in main
+    total_label_counter = Counter(
+                          ^^^^^^^^
+  File "/usr/lib/python3.12/collections/__init__.py", line 607, in __init__
+    self.update(iterable, **kwds)
+  File "/usr/lib/python3.12/collections/__init__.py", line 699, in update
+    _count_elements(self, iterable)
+  File "/home/paperspace/DeepEmotion/src/train vgg.py", line 42, in <genexpr>
+    for _, one_hot_label in dataloader
+        ^^^^^^^^^^^^^^^^
+ValueError: too many values to unpack (expected 2)
+
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.

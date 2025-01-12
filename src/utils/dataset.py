@@ -9,6 +9,7 @@ from omegaconf import DictConfig
 class ZarrDataset(Dataset):
     def __init__(self, zarr_path: str):
         # Open the Zarr store in read-only mode.
+        print(f"Zarr Dataset: {zarr_path}")
         self.store = zarr.open(zarr_path, mode='r')
         
         # Extract references to the arrays
@@ -123,6 +124,7 @@ def get_data_loaders(cfg: DictConfig) -> (DataLoader, DataLoader):
     - val_dataloader: DataLoader for validation split.
     """
     dataset = ZarrDataset(cfg.data.zarr_path)
+    print(f"Zarr Path: {cfg.data.zarr_path}")
 
     # Specify the train-validation split ratio
     train_ratio = cfg.train.train_ratio
