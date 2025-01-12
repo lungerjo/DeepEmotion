@@ -176,7 +176,7 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
         print(f"Sessions: {dataset.sessions}")
 
     # Extract metadata from the dataset
-    data_files = dataset.data_files       # List[Path]
+    data_files = dataset.data_files
     num_timepoints = dataset.num_timepoints
     index_mappings = dataset.index_mappings
     aligned_labels = dataset.aligned_labels
@@ -341,7 +341,7 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
         print("Filling label array with aligned labels...")
     for mapping in index_mappings:
         f_idx = mapping['data_file_idx']
-        t_idx = mapping['time_idx']
+        t_idx = mapping['row_idx']
         l_idx = mapping['label_idx']
         label_array[f_idx, t_idx] = l_idx
 
