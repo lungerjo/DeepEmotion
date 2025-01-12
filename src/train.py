@@ -1,4 +1,5 @@
 from utils.dataset import get_data_loaders
+import os
 import hydra
 from omegaconf import DictConfig, OmegaConf
 import torch
@@ -7,6 +8,7 @@ import torch.optim as optim
 from models.logistic_regression import LogisticRegressionModel, Small3DCNNClassifier
 import time
 import wandb
+import pickle
 from collections import Counter
 from tqdm import tqdm
 
@@ -39,7 +41,8 @@ def main(cfg: DictConfig) -> None:
         total_loss = 0.0
         correct_predictions = 0
         total_samples = 0
-            
+        best_val_accuracy = 0.0
+        
         model.train()
         for batch in tqdm(train_dataloader):
             # Extract data and labels
@@ -82,32 +85,56 @@ def main(cfg: DictConfig) -> None:
             "epoch_accuracy": accuracy,
             "epoch_duration": epoch_duration,
         })
+        
+        save_dir = cfg.data.save_path
+        
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir, exists_ok=True)
+        
+        if len(os.listdir(save_dir)) > 0:
+            model_path_torch = os.path.join(save_dir, os.listdir(save_dir)[-1])
+            print(f"Loading the model from {model_path_torch}")
+            state_dict_torch = torch.load(model_path_torch, weights_only=True)
+            model = Small3DCNNClassifier(output_dim=output_dim)
+            model = model.to(device)
+            model.load_state_dict(state_dict_torch)
+            print(f"Loaded model from {model_path_torch}")
+        
         model.eval()
         val_correct = 0
         val_total = 0
+        
         with torch.no_grad():
             for val_batch in val_dataloader:
                 val_data, val_labels = batch["data_tensor"], batch["label_tensor"]
                 val_data = data.float().to(device)  # Ensure data is float for model input
                 val_labels = labels.long().to(device)  # Ensure labels are integers for CrossEntropyLoss
-                
                 val_output = model(val_data)
                 _, val_predictions = torch.max(val_output, dim=1)
-                val_true_labels = val_labels.argmax(dim=1)
-                
-                val_correct += (val_predictions == val_true_labels).sum().item()
-                val_total += val_true_labels.size(0)
+                val_correct += (val_predictions == val_labels).sum().item()
+                val_total += val_labels.size(0)
 
         val_accuracy = val_correct / val_total if val_total > 0 else 0
         print(f"Epoch [{epoch+1}/{cfg.train.epochs}], Loss: {normalized_loss:.4f}, "
         f"Accuracy: {accuracy*100:.2f}%, Time: {epoch_duration:.2f} seconds",
         f"Validation Accuracy: {val_accuracy * 100:.2f}")
+        
         wandb.log({
             "epoch": epoch + 1,
             "train_loss": normalized_loss,
             "train_accuracy": accuracy,
             "val_accuracy": val_accuracy
         })
-    
+        
+        print("Deciding whether to save model...")
+        
+        if best_val_accuracy < val_accuracy and cfg.data.save_model:
+            best_val_accuracy = val_accuracy
+            
+            model_path_torch = os.path.join(save_dir, f"model_epoch_{epoch+1}.pth")
+            torch.save(model.state_dict(), model_path_torch)
+
+            print(f"Model saved at {save_dir}")
+            
 if __name__ == "__main__":
     main()
