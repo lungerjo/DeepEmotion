@@ -34,7 +34,7 @@ class ZarrDataset(Dataset):
         assert len(self.file_to_session) == self.data.shape[0], \
             "Mismatch between file_to_session and data."
 
-        # Precompute the valid (volume_idx, time_idx) pairs that have a valid label.
+        # Precompute the valid (volume_idx, row_idx) pairs that have a valid label.
         self.valid_indices = []
         for volume_idx in range(self.data.shape[0]):
             t_max = self.valid_timepoints[volume_idx]

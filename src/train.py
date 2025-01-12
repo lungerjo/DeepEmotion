@@ -28,15 +28,6 @@ def main(cfg: DictConfig) -> None:
         
     train_dataloader, val_dataloader = get_data_loaders(cfg)
     print(f"Loaded Observations: {len(train_dataloader.dataset) + len(val_dataloader.dataset)}")
-    """
-    emotion_idx_inverse = {v: k for k, v in cfg.data.emotion_idx.items()}
-    total_label_counter = Counter(
-        label for dataloader in [train_dataloader, val_dataloader]
-        for _, one_hot_label in dataloader
-        for label in [emotion_idx_inverse[idx.item()] for idx in torch.argmax(one_hot_label, dim=1)]
-    )
-    print(dict(total_label_counter))
-    """
 
     output_dim = len(cfg.data.emotion_idx)
     model = VGG16Network(output_dim=output_dim)
@@ -101,12 +92,14 @@ def main(cfg: DictConfig) -> None:
         val_correct = 0
         val_total = 0
         with torch.no_grad():
-            for val_batch, val_label in val_dataloader:
-                val_batch, val_label = val_batch.float().to(device), val_label.float().to(device)
+            for val_batch in val_dataloader:
+                val_data, val_labels = batch["data_tensor"], batch["label_tensor"]
+                val_data = data.float().to(device)  # Ensure data is float for model input
+                val_labels = labels.long().to(device)  # Ensure labels are integers for CrossEntropyLoss
                 
-                val_output = model(val_batch)
+                val_output = model(val_data)
                 _, val_predictions = torch.max(val_output, dim=1)
-                val_true_labels = val_label.argmax(dim=1)
+                val_true_labels = val_labels.argmax(dim=1)
                 
                 val_correct += (val_predictions == val_true_labels).sum().item()
                 val_total += val_true_labels.size(0)
