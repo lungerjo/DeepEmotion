@@ -8,6 +8,7 @@ from models.logistic_regression import LogisticRegressionModel, Small3DCNNClassi
 import time
 import wandb
 from collections import Counter
+from tqdm import tqdm
 
 @hydra.main(config_path="./configs", config_name="base", version_base="1.2")
 def main(cfg: DictConfig) -> None:
@@ -26,15 +27,7 @@ def main(cfg: DictConfig) -> None:
         
     train_dataloader, val_dataloader = get_data_loaders(cfg)
     print(f"Loaded Observations: {len(train_dataloader.dataset) + len(val_dataloader.dataset)}")
-    emotion_idx_inverse = {v: k for k, v in cfg.data.emotion_idx.items()}
-    total_label_counter = Counter(
-        label for dataloader in [train_dataloader, val_dataloader]
-        for _, one_hot_label in dataloader
-        for label in [emotion_idx_inverse[idx.item()] for idx in torch.argmax(one_hot_label, dim=1)]
-    )
-    print(dict(total_label_counter))
 
-    input_dim = 132 * 175 * 48
     output_dim = len(cfg.data.emotion_idx)
     model = Small3DCNNClassifier(output_dim=output_dim)
     model = model.to(device)
@@ -46,54 +39,61 @@ def main(cfg: DictConfig) -> None:
         total_loss = 0.0
         correct_predictions = 0
         total_samples = 0
-        
-        model.train()
-        for batch, label in train_dataloader:
             
-            batch, label = batch.float().to(device), label.float().to(device)
+        model.train()
+        for batch in tqdm(train_dataloader):
+            # Extract data and labels
+            data, labels = batch["data_tensor"], batch["label_tensor"]
+            data = data.float().to(device)  # Ensure data is float for model input
+            labels = labels.long().to(device)  # Ensure labels are integers for CrossEntropyLoss
 
-            output = model(batch)
+            # Forward pass
+            output = model(data)
 
+            # Log raw predictions if desired
             wandb.log({
-                "labels": label.detach().cpu().numpy()
+                "labels": labels.detach().cpu().numpy(),
+                "predictions": output.argmax(dim=1).detach().cpu().numpy()
             })
             
-            none_mask = (label.argmax(dim=1) != 0)  # Create a mask where 'NONE' labels (index 0) are excluded
-            filtered_output = output[none_mask]
-            filtered_label = label[none_mask]
+            # Calculate loss
+            loss = criterion(output, labels)  # No need to one-hot encode labels
 
-            if filtered_output.numel() > 0:  # Check if there's any data left after filtering
-                loss = criterion(filtered_output, filtered_label.argmax(dim=1))
-            else:
-                loss = torch.tensor(0.0, requires_grad=True) 
-            
+            # Backward pass
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            
-            total_loss += loss.item()
-            
-            _, predictions = torch.max(output, dim=1)
-            true_labels = label.argmax(dim=1)
-            none_mask = (label.argmax(dim=1) != 0)
-            correct_predictions += (predictions == true_labels).sum().item()
-            total_samples += true_labels.size(0)  # Count all samples since "NONE" labels are already removed
 
+            # Accumulate metrics
+            total_loss += loss.item()
+            _, predictions = torch.max(output, dim=1)  # Get class predictions
+            correct_predictions += (predictions == labels).sum().item()
+            total_samples += labels.size(0) 
+
+        # Calculate epoch metrics
         end_time = time.time()
         epoch_duration = end_time - start_time
-        accuracy = correct_predictions / total_samples if total_samples > 0 else 0  # Handle potential divide by zero
+        accuracy = correct_predictions / total_samples if total_samples > 0 else 0
         normalized_loss = total_loss / total_samples if total_samples > 0 else 0
 
+        # Log epoch metrics to WandB
+        wandb.log({
+            "epoch_loss": normalized_loss,
+            "epoch_accuracy": accuracy,
+            "epoch_duration": epoch_duration,
+        })
         model.eval()
         val_correct = 0
         val_total = 0
         with torch.no_grad():
-            for val_batch, val_label in val_dataloader:
-                val_batch, val_label = val_batch.float().to(device), val_label.float().to(device)
+            for val_batch in val_dataloader:
+                val_data, val_labels = batch["data_tensor"], batch["label_tensor"]
+                val_data = data.float().to(device)  # Ensure data is float for model input
+                val_labels = labels.long().to(device)  # Ensure labels are integers for CrossEntropyLoss
                 
-                val_output = model(val_batch)
+                val_output = model(val_data)
                 _, val_predictions = torch.max(val_output, dim=1)
-                val_true_labels = val_label.argmax(dim=1)
+                val_true_labels = val_labels.argmax(dim=1)
                 
                 val_correct += (val_predictions == val_true_labels).sum().item()
                 val_total += val_true_labels.size(0)
