@@ -9,7 +9,7 @@ class VGG16Network(nn.Module):
         super(VGG16Network, self).__init__()
         # Define the VGG network architecture
         self.features = nn.Sequential(
-            self._convrelublock(1, 64, 2),
+            self._convrelublock(10, 64, 2),
             self._convrelublock(64, 128, 2),
             self._convrelublock(128, 256, 3),
             self._convrelublock(256, 512, 3),
@@ -37,17 +37,17 @@ class VGG16Network(nn.Module):
 
     def forward(self, x):
         x = self.features(x)
-        # print(f"Size after features: {x.size()}")  # Print size after features
+        print(f"Size after features: {x.size()}")  # Print size after features
         x = torch.flatten(x, 0)
-        # print(f"Size after flatten: {x.size()}")
+        print(f"Size after flatten: {x.size()}")
         x = self.classifier(x)
         return x
         
 
 # Example usage
 if __name__ == "__main__":
-    input_dim = (1, 132, 175, 48)
-    with open('src/configs/base.yaml', 'r') as file:
+    input_dim = (10, 132, 175, 48)
+    with open('configs/base.yaml', 'r') as file:
         config = yaml.safe_load(file)
     output_dim = len(config['data']['emotion_idx'])
     model = VGG16Network(output_dim=output_dim)

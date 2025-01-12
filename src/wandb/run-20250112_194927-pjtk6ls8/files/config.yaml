@@ -1,0 +1,86 @@
+_wandb:
+    value:
+        cli_version: 0.18.7
+        m: []
+        python_version: 3.12.8
+        t:
+            "1":
+                - 1
+                - 50
+                - 55
+            "2":
+                - 1
+                - 50
+                - 55
+            "3":
+                - 16
+                - 23
+                - 55
+            "4": 3.12.8
+            "5": 0.18.7
+            "8":
+                - 5
+            "12": 0.18.7
+            "13": linux-x86_64
+data:
+    value:
+        data_path: /home/paperspace/DeepEmotion/src/../data/raw/derivatives/non-linear_anatomical_alignment
+        emotion_idx:
+            ADMIRATION: 8
+            ANGERRAGE: 5
+            COMPASSION: 9
+            CONTEMPT: 6
+            DISAPPOINTMENT: 12
+            FEAR: 2
+            FEARSCONFIRMED: 21
+            GLOATING: 14
+            GRATIFICATION: 20
+            GRATITUDE: 7
+            HAPPINESS: 1
+            HAPPYFOR: 13
+            HATE: 17
+            HOPE: 16
+            LOVE: 4
+            NONE: 0
+            PRIDE: 10
+            RELIEF: 18
+            REMORSE: 11
+            SADNESS: 3
+            SATISFACTION: 15
+            SHAME: 19
+        file_pattern_template: '*_ses-forrestgump_task-forrestgump_rec-dico7Tad2grpbold7TadNL_run-{}_bold.nii.gz'
+        label_path: /home/paperspace/DeepEmotion/src/../data/resampled_annotations/av1o6_resampled.tsv
+        normalization: false
+        session_offsets:
+            - 0
+            - 902
+            - 1784
+            - 2660
+            - 3636
+            - 4560
+            - 5438
+            - 6522
+        sessions:
+            - "01"
+            - "02"
+            - "03"
+            - "04"
+            - "05"
+            - "06"
+            - "07"
+            - "08"
+        subjects:
+            - sub-01
+            - sub-02
+        weight_decay: 0
+        zarr_path: /home/paperspace/DeepEmotion/src/../dataset.zarr
+project_root:
+    value: /home/paperspace/DeepEmotion/src/..
+train:
+    value:
+        batch_size: 10
+        epochs: 2
+        shuffle: true
+        train_ratio: 0.8
+verbose:
+    value: true

@@ -1,0 +1,16 @@
+{"time":"2025-01-12T19:40:43.389992453Z","level":"INFO","msg":"using version","core version":"0.18.7"}
+{"time":"2025-01-12T19:40:43.390001135Z","level":"INFO","msg":"created symlink","path":"/home/paperspace/DeepEmotion/src/wandb/run-20250112_194043-loffa980/logs/debug-core.log"}
+{"time":"2025-01-12T19:40:43.493564081Z","level":"INFO","msg":"created new stream","id":"loffa980"}
+{"time":"2025-01-12T19:40:43.49360933Z","level":"INFO","msg":"stream: started","id":"loffa980"}
+{"time":"2025-01-12T19:40:43.493722049Z","level":"INFO","msg":"writer: Do: started","stream_id":"loffa980"}
+{"time":"2025-01-12T19:40:43.493818849Z","level":"INFO","msg":"sender: started","stream_id":"loffa980"}
+{"time":"2025-01-12T19:40:43.493885111Z","level":"INFO","msg":"handler: started","stream_id":"loffa980"}
+{"time":"2025-01-12T19:40:43.63240249Z","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-01-12T19:40:50.955050294Z","level":"INFO","msg":"stream: closing","id":"loffa980"}
+{"time":"2025-01-12T19:40:50.955083498Z","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-01-12T19:40:50.955879646Z","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-01-12T19:40:51.250296007Z","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-01-12T19:40:51.330732702Z","level":"INFO","msg":"handler: closed","stream_id":"loffa980"}
+{"time":"2025-01-12T19:40:51.330813202Z","level":"INFO","msg":"sender: closed","stream_id":"loffa980"}
+{"time":"2025-01-12T19:40:51.330799831Z","level":"INFO","msg":"writer: Close: closed","stream_id":"loffa980"}
+{"time":"2025-01-12T19:40:51.330911291Z","level":"INFO","msg":"stream: closed","id":"loffa980"}

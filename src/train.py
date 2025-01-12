@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from models.logistic_regression import LogisticRegressionModel, Small3DCNNClassifier
+from models.vgg import VGG16Network
 import time
 import wandb
 from collections import Counter
@@ -38,7 +39,7 @@ def main(cfg: DictConfig) -> None:
     """
 
     output_dim = len(cfg.data.emotion_idx)
-    model = Small3DCNNClassifier(output_dim=output_dim)
+    model = VGG16Network(output_dim=output_dim)
     model = model.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay=cfg.data.weight_decay)
@@ -53,16 +54,21 @@ def main(cfg: DictConfig) -> None:
         for batch in tqdm(train_dataloader):
             # Extract data and labels
             data, labels = batch["data_tensor"], batch["label_tensor"]
+            print(f"Input data shape: {data.shape}")
+            print(f"Input labels shape: {labels.shape}")
             data = data.float().to(device)  # Ensure data is float for model input
             labels = labels.long().to(device)  # Ensure labels are integers for CrossEntropyLoss
 
             # Forward pass
             output = model(data)
 
+            print(f"Output shape: {output.size()}")
+
+
             # Log raw predictions if desired
             wandb.log({
                 "labels": labels.detach().cpu().numpy(),
-                "predictions": output.argmax(dim=1).detach().cpu().numpy()
+                "predictions": output.argmax(dim=0).detach().cpu().numpy()
             })
             
             # Calculate loss

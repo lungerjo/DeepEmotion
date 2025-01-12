@@ -1,0 +1,43 @@
+{
+  "os": "Linux-5.15.0-127-generic-x86_64-with-glibc2.35",
+  "python": "3.12.8",
+  "startedAt": "2025-01-12T19:27:47.733483Z",
+  "program": "/home/paperspace/DeepEmotion/src/train.py",
+  "codePath": "src/train.py",
+  "git": {
+    "remote": "https://github.com/lungerjo/DeepEmotion.git",
+    "commit": "828144b94fb024a3159b4a83cf8a338cbbd8d9d0"
+  },
+  "email": "j.lunger@mail.utoronto.ca",
+  "root": "/home/paperspace/DeepEmotion/src",
+  "host": "ps0dno0hv2n7",
+  "username": "paperspace",
+  "executable": "/home/paperspace/.cache/pypoetry/virtualenvs/deepemotion-r8YRC923-py3.12/bin/python",
+  "codePathLocal": "train.py",
+  "cpu_count": 8,
+  "cpu_count_logical": 8,
+  "gpu": "Quadro M4000",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "526452940800",
+      "used": "165637373952"
+    }
+  },
+  "memory": {
+    "total": "31529168896"
+  },
+  "cpu": {
+    "count": 8,
+    "countLogical": 8
+  },
+  "gpu_nvidia": [
+    {
+      "name": "Quadro M4000",
+      "memoryTotal": "8589934592",
+      "cudaCores": 1664,
+      "architecture": "Maxwell"
+    }
+  ],
+  "cudaVersion": "12.4"
+}

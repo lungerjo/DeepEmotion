@@ -1,0 +1,36 @@
+Device: cuda
+Loading dataloader...
+Zarr Dataset: /home/paperspace/DeepEmotion/src/../dataset.zarr
+Dataset contains 16 files.
+Spatial dimensions: (132, 175, 48)
+Maximum timepoints per file: 542
+Subjects: ['sub-01' 'sub-02']
+Sessions: ['01' '02' '03' '04' '05' '06' '07' '08']
+Emotion categories: ['NONE', 'HAPPINESS', 'FEAR', 'SADNESS', 'LOVE', 'ANGERRAGE', 'CONTEMPT', 'GRATITUDE', 'ADMIRATION', 'COMPASSION', 'PRIDE', 'REMORSE', 'DISAPPOINTMENT', 'HAPPYFOR', 'GLOATING', 'SATISFACTION', 'HOPE', 'HATE', 'RELIEF', 'SHAME', 'GRATIFICATION', 'FEARSCONFIRMED']
+Total valid labeled timepoints: 1496
+Zarr Path: /home/paperspace/DeepEmotion/src/../dataset.zarr
+Loaded Observations: 1496
+  0%|                                                                                                                             | 0/120 [00:04<?, ?it/s]
+Size after features: torch.Size([512, 4, 5, 1])
+Size after flatten: torch.Size([10240])
+Output shape: torch.Size([22])
+Error executing job with overrides: []
+Traceback (most recent call last):
+  File "/home/paperspace/DeepEmotion/src/train.py", line 73, in main
+    loss = criterion(output, labels)  # No need to one-hot encode labels
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/paperspace/.cache/pypoetry/virtualenvs/deepemotion-r8YRC923-py3.12/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1736, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/paperspace/.cache/pypoetry/virtualenvs/deepemotion-r8YRC923-py3.12/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1747, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/paperspace/.cache/pypoetry/virtualenvs/deepemotion-r8YRC923-py3.12/lib/python3.12/site-packages/torch/nn/modules/loss.py", line 1293, in forward
+    return F.cross_entropy(
+           ^^^^^^^^^^^^^^^^
+  File "/home/paperspace/.cache/pypoetry/virtualenvs/deepemotion-r8YRC923-py3.12/lib/python3.12/site-packages/torch/nn/functional.py", line 3479, in cross_entropy
+    return torch._C._nn.cross_entropy_loss(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: size mismatch (got input: [22], target: [10])
+
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.

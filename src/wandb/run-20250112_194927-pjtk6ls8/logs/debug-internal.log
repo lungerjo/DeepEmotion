@@ -1,0 +1,16 @@
+{"time":"2025-01-12T19:49:27.133238378Z","level":"INFO","msg":"using version","core version":"0.18.7"}
+{"time":"2025-01-12T19:49:27.133238378Z","level":"INFO","msg":"created symlink","path":"/home/paperspace/DeepEmotion/src/wandb/run-20250112_194927-pjtk6ls8/logs/debug-core.log"}
+{"time":"2025-01-12T19:49:27.236638891Z","level":"INFO","msg":"created new stream","id":"pjtk6ls8"}
+{"time":"2025-01-12T19:49:27.236683059Z","level":"INFO","msg":"stream: started","id":"pjtk6ls8"}
+{"time":"2025-01-12T19:49:27.236763064Z","level":"INFO","msg":"writer: Do: started","stream_id":"pjtk6ls8"}
+{"time":"2025-01-12T19:49:27.236770333Z","level":"INFO","msg":"handler: started","stream_id":"pjtk6ls8"}
+{"time":"2025-01-12T19:49:27.236835122Z","level":"INFO","msg":"sender: started","stream_id":"pjtk6ls8"}
+{"time":"2025-01-12T19:49:27.719187125Z","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-01-12T19:49:33.065335139Z","level":"INFO","msg":"stream: closing","id":"pjtk6ls8"}
+{"time":"2025-01-12T19:49:33.065517987Z","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-01-12T19:49:33.066465897Z","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-01-12T19:49:33.39180161Z","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-01-12T19:49:33.466548966Z","level":"INFO","msg":"handler: closed","stream_id":"pjtk6ls8"}
+{"time":"2025-01-12T19:49:33.466625458Z","level":"INFO","msg":"sender: closed","stream_id":"pjtk6ls8"}
+{"time":"2025-01-12T19:49:33.466611184Z","level":"INFO","msg":"writer: Close: closed","stream_id":"pjtk6ls8"}
+{"time":"2025-01-12T19:49:33.466732907Z","level":"INFO","msg":"stream: closed","id":"pjtk6ls8"}

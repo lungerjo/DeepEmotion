@@ -1,0 +1,22 @@
+Device: cuda
+Loading dataloader...
+Zarr Dataset: /home/paperspace/DeepEmotion/src/../dataset.zarr
+Dataset contains 16 files.
+Spatial dimensions: (132, 175, 48)
+Maximum timepoints per file: 542
+Subjects: ['sub-01' 'sub-02']
+Sessions: ['01' '02' '03' '04' '05' '06' '07' '08']
+Emotion categories: ['NONE', 'HAPPINESS', 'FEAR', 'SADNESS', 'LOVE', 'ANGERRAGE', 'CONTEMPT', 'GRATITUDE', 'ADMIRATION', 'COMPASSION', 'PRIDE', 'REMORSE', 'DISAPPOINTMENT', 'HAPPYFOR', 'GLOATING', 'SATISFACTION', 'HOPE', 'HATE', 'RELIEF', 'SHAME', 'GRATIFICATION', 'FEARSCONFIRMED']
+Total valid labeled timepoints: 1496
+Zarr Path: /home/paperspace/DeepEmotion/src/../dataset.zarr
+Loaded Observations: 1496
+  0%|                                                                                                                             | 0/120 [00:04<?, ?it/s]
+Output shape: torch.Size([22])
+Error executing job with overrides: []
+Traceback (most recent call last):
+  File "/home/paperspace/DeepEmotion/src/train.py", line 69, in main
+    "predictions": output.argmax(dim=1).detach().cpu().numpy()
+                   ^^^^^^^^^^^^^^^^^^^^
+IndexError: Dimension out of range (expected to be in range of [-1, 0], but got 1)
+
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.

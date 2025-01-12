@@ -1,0 +1,19 @@
+Device: cuda
+Loading dataloader...
+Zarr Dataset: /home/paperspace/DeepEmotion/src/models/../dataset.zarr
+Error executing job with overrides: []
+Traceback (most recent call last):
+  File "/home/paperspace/DeepEmotion/src/train.py", line 29, in main
+    train_dataloader, val_dataloader = get_data_loaders(cfg)
+                                       ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/paperspace/DeepEmotion/src/utils/dataset.py", line 126, in get_data_loaders
+    dataset = ZarrDataset(cfg.data.zarr_path)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/paperspace/DeepEmotion/src/utils/dataset.py", line 13, in __init__
+    self.store = zarr.open(zarr_path, mode='r')
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/paperspace/.cache/pypoetry/virtualenvs/deepemotion-r8YRC923-py3.12/lib/python3.12/site-packages/zarr/convenience.py", line 139, in open
+    raise PathNotFoundError(path)
+zarr.errors.PathNotFoundError: nothing found at path ''
+
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.
