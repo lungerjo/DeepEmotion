@@ -61,11 +61,11 @@ class ZarrDataset(Dataset):
 
     def __getitem__(self, idx: int):
         # Retrieve the (volume_idx, time_idx) for this valid sample
-        volume_idx, time_idx = self.valid_indices[idx]
+        volume_idx, row_idx = self.valid_indices[idx]
 
         # Extract the data slice and corresponding label
-        data_slice = self.data[volume_idx, :, :, :, time_idx]
-        label = self.labels[volume_idx, time_idx]
+        data_slice = self.data[volume_idx, :, :, :, row_idx]
+        label = self.labels[volume_idx, row_idx]
 
         # Validate subject/session mapping
         subject = self.file_to_subject[volume_idx]
