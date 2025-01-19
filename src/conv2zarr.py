@@ -23,18 +23,20 @@ class CrossSubjectDataset:
         self.observer_labels = pd.read_csv(self.label_path, sep='\t')
 
         # Find data files and get number of timepoints
-        self.data_files_per_session, self.num_timepoints_per_session = self._load_data_info()
+        self.volume_paths_per_session, self.num_timepoints_per_volume = self._load_data_info()
 
         # Flatten the data files and num_timepoints lists
         self.data_files = []
         self.num_timepoints = []
-        for session_files, session_num_timepoints in zip(self.data_files_per_session, self.num_timepoints_per_session):
-            self.data_files.extend(session_files)
-            self.num_timepoints.extend(session_num_timepoints)
+        for volume_paths, num_timepoints_per_volume in zip(self.volume_paths_per_session, self.num_timepoints_per_volume):
+            self.data_files.extend(volume_paths)
+            self.num_timepoints.extend(num_timepoints_per_volume)
 
         if self.verbose:
-            print(f"self.data_files_per_session {self.data_files_per_session}")
-            print(f"self.num_timepoints_per_session {self.num_timepoints_per_session}")
+            print(f"len(self.data_files): {len(self.data_files)}")
+            print(f"ex {self.data_files[:5]}")
+            print(f"len(self.num_timepoints): {len(self.num_timepoints)}")
+            print(f"ex {self.num_timepoints[:5]}")
 
         # Align labels and filter out 'NONE' labels
         self.aligned_labels = self._align_labels()
@@ -56,14 +58,14 @@ class CrossSubjectDataset:
         aligned_labels = []
         TR = 2  # seconds per TR
 
-        for session_idx, session_num_timepoints in enumerate(self.num_timepoints_per_session):
-            session_total_timepoints = session_num_timepoints[0]
+        for session_idx, volume_num_timepoints in enumerate(self.num_timepoints_per_volume):
+            session_timepoints = volume_num_timepoints[0]
             session_start = self.session_offsets[session_idx]
 
             if session_idx < len(self.session_offsets) - 1:
                 session_end = self.session_offsets[session_idx + 1]
             else:
-                session_end = session_start + session_total_timepoints * TR
+                session_end = session_start + session_timepoints * TR
 
             if self.verbose:
                 print(f"session_{session_idx}_start {session_start}, end {session_end}")
@@ -82,77 +84,110 @@ class CrossSubjectDataset:
 
     def _find_files(self):
         """Searches for files in all subject directories and runs based on the file pattern."""
-        files_per_session = []
+        session_files = []
         if self.verbose:
             print(f"Finding files")
         for session in self.sessions:
-            session_files = []
+            subject_files = []
             for subject in self.subjects:
                 subject_dir = self.data_path / subject / "ses-forrestgump/func"
                 if self.verbose:
                     print(f"Looking in {subject_dir}")
                 file_pattern = self.file_pattern_template.format(session)
                 matched_files = list(subject_dir.rglob(file_pattern))
-                session_files.extend(matched_files)
-            files_per_session.append(session_files)
+                subject_files.extend(matched_files)
+            session_files.append(subject_files)
         if self.verbose:
-            print(f"{sum(len(files) for files in files_per_session)} files found")
-        return files_per_session
+            print(f"{sum(len(subject_files) for subject_files in session_files)} volumes found")
+        return session_files
 
     def _load_data_info(self):
         """Gets the number of timepoints for each data file without loading data into memory."""
-        files_per_session = self._find_files()
-        data_files_per_session = []
-        num_timepoints_per_session = []
+        session_files = self._find_files()
+        volume_paths_per_session = []
+        num_timepoints_per_volume = []
 
-        for session_idx, session_files in enumerate(files_per_session):
-            session_data_files = []
-            session_num_timepoints = []
-            for file_path in session_files:
-                nii_img = nib.load(str(file_path))
+        for session_idx, subject_files in enumerate(session_files):
+            volume_paths = []
+            volume_num_timepoints = []
+            for volume_path in subject_files:
+                nii_img = nib.load(str(volume_path))
                 shape = nii_img.shape  # (x, y, z, t)
-                session_num_timepoints.append(shape[-1])  # Number of timepoints (t)
-                session_data_files.append(file_path)
-            data_files_per_session.append(session_data_files)
-            num_timepoints_per_session.append(session_num_timepoints)
+                volume_num_timepoints.append(shape[-1])  # Number of timepoints (t)
+                volume_paths.append(volume_path)
+            volume_paths_per_session.append(volume_paths)
+            num_timepoints_per_volume.append(volume_num_timepoints)
 
         if self.verbose:
-            print(f"num_timepoints_per_session {num_timepoints_per_session}")
+            print(f"num_timepoints_per_volume {num_timepoints_per_volume}")
 
-        return data_files_per_session, num_timepoints_per_session
+        return volume_paths_per_session, num_timepoints_per_volume
 
     def _create_index_mappings(self):
         """
-        Creates a mapping from dataset indices to data file indices and time indices,
-        excluding 'NONE' labels and their corresponding data slices.
+        For each session, map label offsets to a local time index in [0, session_timepoints).
+        Then apply that same row index to ALL volumes in that session (since they share the same time range).
+        We only increment the global volume index after we've handled all volumes in the session.
         """
         index_mappings = []
-        cumulative_timepoints = np.cumsum([0] + self.num_timepoints)
+        TR = 2  # seconds per TR
 
-        for idx, row in self.aligned_labels.iterrows():
-            offset = row['offset']
-            global_time_idx = int(offset / 2)  # Convert offset to global time index
+        # This will track how many volumes we've already placed in the 'flattened' list
+        # after processing previous sessions.
+        global_volume_offset = 0
 
-            # Find the data file index
-            data_file_idx = np.searchsorted(cumulative_timepoints, global_time_idx, side='right') - 1
-            if data_file_idx >= len(cumulative_timepoints) - 1:
-                data_file_idx -= 1
-            row_idx_within_file = global_time_idx - cumulative_timepoints[data_file_idx]
+        for session_idx, (volume_paths, volume_lengths) in enumerate(
+            zip(self.volume_paths_per_session, self.num_timepoints_per_volume)
+        ):
+            # How many timepoints does each volume in this session have?
+            # (They should all be the same, e.g. 451, 438, etc.)
+            session_timepoints = volume_lengths[0]
+            
+            # Convert session_offsets to a time range for this session
+            session_start = self.session_offsets[session_idx]
+            if session_idx < len(self.session_offsets) - 1:
+                next_session_start = self.session_offsets[session_idx + 1]
+            else:
+                # last session: just add TR * timepoints
+                next_session_start = session_start + session_timepoints * TR
 
-            # Check for out-of-bounds
-            if row_idx_within_file >= self.num_timepoints[data_file_idx] or row_idx_within_file < 0:
-                continue  # Skip invalid indices
+            # Filter labels that belong to this session’s time window
+            session_mask = (
+                (self.aligned_labels['offset'] >= session_start)
+                & (self.aligned_labels['offset'] < next_session_start)
+            )
+            session_labels = self.aligned_labels[session_mask]
 
-            label = row['emotion']
-            label_idx = self.emotion_idx[label]
+            # For each label event in this session:
+            for row_idx, label_row in session_labels.iterrows():
+                offset = label_row['offset']
+                label_str = label_row['emotion']
+                label_idx = self.emotion_idx[label_str]
 
-            # Include aligned_label_idx for later merging
-            index_mappings.append({
-                'aligned_label_idx': idx,
-                'data_file_idx': data_file_idx,
-                'row_idx': row_idx_within_file,
-                'label_idx': label_idx
-            })
+                # Convert offset to a local time index in [0, session_timepoints)
+                local_time_idx = int((offset - session_start) / TR)
+                # Skip if it falls outside the actual volume length
+                if not (0 <= local_time_idx < session_timepoints):
+                    continue
+
+                # Assign that same time index to EVERY volume in this session
+                for vol_idx, n_tp in enumerate(volume_lengths):
+                    # Just in case volumes differ slightly in actual length:
+                    if local_time_idx >= n_tp:
+                        continue
+
+                    # data_file_idx is how we map back into the *flattened* list
+                    data_file_idx = global_volume_offset + vol_idx
+
+                    index_mappings.append({
+                        'aligned_label_idx': row_idx,
+                        'data_file_idx': data_file_idx,
+                        'row_idx': local_time_idx,
+                        'label_idx': label_idx
+                    })
+
+            # After finishing session_idx, move our global_volume_offset
+            global_volume_offset += len(volume_paths)
 
         if self.verbose:
             print(f"mappings created: {len(index_mappings)}")
@@ -160,6 +195,7 @@ class CrossSubjectDataset:
                 print(mapping)
 
         return index_mappings
+
 
 
 def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
