@@ -6,11 +6,13 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from models.logistic_regression import LogisticRegressionModel, Small3DCNNClassifier
+from models.resnet import resnet18_classification
 import time
 import wandb
 import pickle
 from collections import Counter
 from tqdm import tqdm
+
 
 @hydra.main(config_path="./configs", config_name="base", version_base="1.2")
 def main(cfg: DictConfig) -> None:
@@ -29,6 +31,19 @@ def main(cfg: DictConfig) -> None:
     print(f"Loaded Observations: {len(train_dataloader.dataset) + len(val_dataloader.dataset)}")
     output_dim = len(cfg.data.emotion_idx)
     model = Small3DCNNClassifier(output_dim=output_dim)
+    
+    # Need to fix the resnet model loading
+    # model = resnet18_classification(**cfg.data.resnet_model_params)
+    # pretrain_path = cfg.data.resnet_pretrain_path
+    # print(f'Loading pretrained model from {pretrain_path}')
+    # pretrain = torch.load(pretrain_path)
+
+    # # Exclude the classification head from pretrained weights
+    # pretrain_dict = {k: v for k, v in pretrain['state_dict'].items() if k in model.state_dict().keys() and 'fc' not in k}
+
+    # # Update the model's state dict with pretrained weights
+    # model.load_state_dict(pretrain_dict, strict=False)
+    
     model = model.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=cfg.data.learning_rate, weight_decay=cfg.data.weight_decay)

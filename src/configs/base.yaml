@@ -57,11 +57,22 @@ data:
   weight_decay: 0
   learning_rate: 0.0001
   seed: 42
+  
+  resnet_model_params: {
+    'sample_input_W': 56,
+    'sample_input_H': 448,
+    'sample_input_D': 448,
+    'shortcut_type': 'B', # A - Identity Matrix or B - Projection Matrix
+    'no_cuda': False, 
+    'num_classes': 22  # Update may be necessary.
+  }
+  resnet_pretrain_path: 'models/pretrain/resnet-18-kinetics.pth'    # A sample example.
+
   save_model: True
   save_model_path: "output/models"
   # "" or "output/models/ model_epoch_{i}.pth"
   load_model_path : "output/models/model_epoch_5.pth" 
-  
+
 train:
   epochs: 50
   batch_size: 16
