@@ -37,21 +37,9 @@ class ZarrDataset(Dataset):
         self.valid_indices = []
         for volume_idx in range(self.data.shape[0]):
             t_max = self.valid_timepoints[volume_idx]
-            print(f"t_max {t_max}")
             valid_times = torch.where(torch.tensor(self.labels[volume_idx, :t_max]) != -1)[0]
-            print(f"valid_times {len(valid_times)}")
             for t_idx in valid_times.tolist():
                 self.valid_indices.append((volume_idx, t_idx))
-            print(f"volume_idx: {volume_idx}, num_indices:  {len(self.valid_indices)}")
-
-        # Print metadata for validation
-        print(f"Dataset contains {len(self.file_paths)} files.")
-        print(f"Spatial dimensions: {self.data.shape[1:4]}")
-        print(f"Maximum timepoints per file: {self.data.shape[4]}")
-        print(f"Subjects: {self.subject_ids}")
-        print(f"Sessions: {self.session_ids}")
-        print(f"Emotion categories: {self.emotions}")
-        print(f"Total valid labeled timepoints: {len(self.valid_indices)}")
 
         # Parse aligned labels if available
         if self.aligned_labels_csv:
@@ -127,6 +115,15 @@ def get_data_loaders(cfg: DictConfig) -> (DataLoader, DataLoader):
     """
     
     dataset = ZarrDataset(cfg.data.zarr_path)
+
+    if cfg.verbose:
+        print(f"Dataset contains {len(dataset.file_paths)} files.")
+        print(f"Spatial dimensions: {dataset.data.shape[1:4]}")
+        print(f"Maximum timepoints per file: {dataset.data.shape[4]}")
+        print(f"Subjects: {dataset.subject_ids}")
+        print(f"Sessions: {dataset.session_ids}")
+        print(f"Emotion categories: {dataset.emotions}")
+        print(f"Total valid labeled timepoints: {len(dataset.valid_indices)}")
 
     # Specify the train-validation split ratio
     train_ratio = cfg.train.train_ratio
