@@ -125,13 +125,14 @@ def get_data_loaders(cfg: DictConfig) -> (DataLoader, DataLoader):
     - train_dataloader: DataLoader for training split.
     - val_dataloader: DataLoader for validation split.
     """
+    
     dataset = ZarrDataset(cfg.data.zarr_path)
 
     # Specify the train-validation split ratio
     train_ratio = cfg.train.train_ratio
     train_size = int(train_ratio * len(dataset))
     val_size = len(dataset) - train_size
-    train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+    train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=torch.Generator().manual_seed(cfg.data.seed))
 
     # Create DataLoaders
     train_dataloader = DataLoader(train_dataset, batch_size=cfg.train.batch_size, shuffle=cfg.train.shuffle)
@@ -149,7 +150,8 @@ if __name__ == "__main__":
     zarr_dataset = ZarrDataset(zarr_path)
     
     # Get loaders
-    train_loader, val_loader = get_data_loaders(cfg, zarr_path)
+    # train_loader, val_loader = get_data_loaders(cfg, zarr_path)
+    train_loader, val_loader = get_data_loaders(cfg)
 
     # Inspect some samples from train_loader
     for batch_idx, batch in enumerate(train_loader):
