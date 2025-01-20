@@ -293,7 +293,7 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
     store.attrs['aligned_labels'] = csv_str
 
     # Choose chunking strategy
-    chunk_size = (1, x, y, z, 50)
+    chunk_size = (1, x, y, z, 1)
     if cfg.verbose:
         print(f"Chunk size chosen: {chunk_size}")
 
