@@ -5,7 +5,7 @@ from omegaconf import DictConfig, OmegaConf
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from models.logistic_regression import LogisticRegressionModel, Small3DCNNClassifier
+from models.CNN import CNN
 import time
 import wandb
 import pickle
@@ -21,6 +21,7 @@ def main(cfg: DictConfig) -> None:
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
     if cfg.wandb:
         wandb.init(project="DeepEmotion", config=cfg_dict)
+        wandb.config.update(cfg_dict)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if cfg.verbose:
@@ -30,7 +31,12 @@ def main(cfg: DictConfig) -> None:
     train_dataloader, val_dataloader = get_data_loaders(cfg)
     print(f"Loaded Observations: {len(train_dataloader.dataset) + len(val_dataloader.dataset)}")
     output_dim = len(cfg.data.emotion_idx)
-    model = Small3DCNNClassifier(output_dim=output_dim)
+
+    if cfg.model == "CNN":
+        model = CNN(cfg=cfg, output_dim=output_dim)
+    else:
+        raise ValueError(f"{cfg.data.model} is not a valid model")
+
     model = model.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=cfg.data.learning_rate, weight_decay=cfg.data.weight_decay)
@@ -118,12 +124,13 @@ def main(cfg: DictConfig) -> None:
                 "train_accuracy": accuracy,
                 "val_accuracy": val_accuracy
             })
-    
-        print("Deciding whether to save the model...")
 
         if best_val_accuracy < val_accuracy and cfg.data.save_model:
             best_val_accuracy = val_accuracy
-            model_path_torch = os.path.join(save_dir, f"model_epoch_{epoch+1}.pth")
+            if cfg.wandb:
+                model_path_torch = os.path.join(save_dir, f"{wandb.run.id}_{epoch+1}.pth")
+            else:
+                model_path_torch = os.path.join(save_dir, f"{epoch+1}.pth")
             torch.save(model.state_dict(), model_path_torch)
             print(f"Model saved at {save_dir}")
 
