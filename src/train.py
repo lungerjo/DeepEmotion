@@ -19,7 +19,9 @@ def main(cfg: DictConfig) -> None:
     and trains a logistic regression model.
     """
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-    wandb.init(project="DeepEmotion", config=cfg_dict)
+    if cfg.wandb:
+        wandb.init(project="DeepEmotion", config=cfg_dict)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if cfg.verbose:
         print(f"Device: {device}")
@@ -51,10 +53,11 @@ def main(cfg: DictConfig) -> None:
             # Forward pass
             output = model(data)
             # Log raw predictions if desired
-            wandb.log({
-                "labels": labels.detach().cpu().numpy(),
-                "predictions": output.argmax(dim=1).detach().cpu().numpy()
-            })
+            if cfg.wandb:
+                wandb.log({
+                    "labels": labels.detach().cpu().numpy(),
+                    "predictions": output.argmax(dim=1).detach().cpu().numpy()
+                })
             
             # Calculate loss
             loss = criterion(output, labels)  # No need to one-hot encode labels
@@ -73,13 +76,14 @@ def main(cfg: DictConfig) -> None:
         epoch_duration = end_time - start_time
         accuracy = correct_predictions / total_samples if total_samples > 0 else 0
         normalized_loss = total_loss / total_samples if total_samples > 0 else 0
-        # Log epoch metrics to WandB
-        wandb.log({
-            "epoch_loss": normalized_loss,
-            "epoch_accuracy": accuracy,
-            "epoch_duration": epoch_duration,
-        })
         
+        if cfg.wandb:
+            wandb.log({
+                "epoch_loss": normalized_loss,
+                "epoch_accuracy": accuracy,
+                "epoch_duration": epoch_duration,
+            })
+
         if cfg.data.load_model_path:
             model_path_torch = cfg.data.load_model_path
             print(f"Loading the model from {model_path_torch}...")
@@ -107,13 +111,14 @@ def main(cfg: DictConfig) -> None:
         f"Accuracy: {accuracy*100:.2f}%, Time: {epoch_duration:.2f} seconds",
         f"Validation Accuracy: {val_accuracy * 100:.2f}")
 
-        wandb.log({
-            "epoch": epoch + 1,
-            "train_loss": normalized_loss,
-            "train_accuracy": accuracy,
-            "val_accuracy": val_accuracy
-        })
-
+        if cfg.wandb:
+            wandb.log({
+                "epoch": epoch + 1,
+                "train_loss": normalized_loss,
+                "train_accuracy": accuracy,
+                "val_accuracy": val_accuracy
+            })
+    
         print("Deciding whether to save the model...")
 
         if best_val_accuracy < val_accuracy and cfg.data.save_model:
