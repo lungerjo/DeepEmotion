@@ -55,13 +55,19 @@ data:
   }
   normalization: False
   weight_decay: 0
+  learning_rate: 0.0001
+  seed: 42
+  save_model: True
+  save_model_path: "output/models"
+  # "" or "output/models/ model_epoch_{i}.pth"
+  load_model_path : "output/models/model_epoch_5.pth" 
   
 train:
   epochs: 50
-  batch_size: 25
+  batch_size: 16
   shuffle: True
   train_ratio: .8
 
 verbose: True
 wandb: False
-
+sys_log: True
