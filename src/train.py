@@ -18,7 +18,8 @@ def main(cfg: DictConfig) -> None:
     """
 
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-    wandb.init(project="DeepEmotion", config=cfg_dict)
+    if cfg.wandb:
+        wandb.init(project="DeepEmotion", config=cfg_dict)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if cfg.verbose:
@@ -51,10 +52,11 @@ def main(cfg: DictConfig) -> None:
             output = model(data)
 
             # Log raw predictions if desired
-            wandb.log({
-                "labels": labels.detach().cpu().numpy(),
-                "predictions": output.argmax(dim=1).detach().cpu().numpy()
-            })
+            if cfg.wandb:
+                wandb.log({
+                    "labels": labels.detach().cpu().numpy(),
+                    "predictions": output.argmax(dim=1).detach().cpu().numpy()
+                })
             
             # Calculate loss
             loss = criterion(output, labels)  # No need to one-hot encode labels
@@ -77,11 +79,12 @@ def main(cfg: DictConfig) -> None:
         normalized_loss = total_loss / total_samples if total_samples > 0 else 0
 
         # Log epoch metrics to WandB
-        wandb.log({
-            "epoch_loss": normalized_loss,
-            "epoch_accuracy": accuracy,
-            "epoch_duration": epoch_duration,
-        })
+        if cfg.wandb:
+            wandb.log({
+                "epoch_loss": normalized_loss,
+                "epoch_accuracy": accuracy,
+                "epoch_duration": epoch_duration,
+            })
         model.eval()
         val_correct = 0
         val_total = 0
@@ -93,21 +96,21 @@ def main(cfg: DictConfig) -> None:
                 
                 val_output = model(val_data)
                 _, val_predictions = torch.max(val_output, dim=1)
-                val_true_labels = val_labels.argmax(dim=1)
                 
-                val_correct += (val_predictions == val_true_labels).sum().item()
-                val_total += val_true_labels.size(0)
+                val_correct += (val_predictions == val_labels).sum().item()
+                val_total += val_labels.size(0)
 
         val_accuracy = val_correct / val_total if val_total > 0 else 0
         print(f"Epoch [{epoch+1}/{cfg.train.epochs}], Loss: {normalized_loss:.4f}, "
         f"Accuracy: {accuracy*100:.2f}%, Time: {epoch_duration:.2f} seconds",
         f"Validation Accuracy: {val_accuracy * 100:.2f}")
-        wandb.log({
-            "epoch": epoch + 1,
-            "train_loss": normalized_loss,
-            "train_accuracy": accuracy,
-            "val_accuracy": val_accuracy
-        })
+        if cfg.wandb:
+            wandb.log({
+                "epoch": epoch + 1,
+                "train_loss": normalized_loss,
+                "train_accuracy": accuracy,
+                "val_accuracy": val_accuracy
+            })
     
 if __name__ == "__main__":
     main()
