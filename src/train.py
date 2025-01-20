@@ -32,10 +32,16 @@ def main(cfg: DictConfig) -> None:
     print(f"Loaded Observations: {len(train_dataloader.dataset) + len(val_dataloader.dataset)}")
     output_dim = len(cfg.data.emotion_idx)
 
-    if cfg.model == "CNN":
+    if cfg.data.load_model:
+        model_path_torch = cfg.data.load_model_path
+        print(f"Loading the model from {model_path_torch}...")
+        state_dict_torch = torch.load(model_path_torch, weights_only=True)
+        model.load_state_dict(state_dict_torch)
+        print(f"Loaded the model from {model_path_torch}.")
+    elif cfg.model == "CNN":
         model = CNN(cfg=cfg, output_dim=output_dim)
     else:
-        raise ValueError(f"{cfg.data.model} is not a valid model")
+        raise ValueError(f"Error: load model as cfg.data.load_model = <model_path> or initialize valid model for cfg.model")
 
     model = model.to(device)
     criterion = nn.CrossEntropyLoss()
@@ -52,51 +58,26 @@ def main(cfg: DictConfig) -> None:
 
         model.train()
         for batch in tqdm(train_dataloader):
-            # Extract data and labels
+
             data, labels = batch["data_tensor"], batch["label_tensor"]
             data = data.float().to(device)  # Ensure data is float for model input
             labels = labels.long().to(device)  # Ensure labels are integers for CrossEntropyLoss
-            # Forward pass
+
             output = model(data)
-            # Log raw predictions if desired
-            if cfg.wandb:
-                wandb.log({
-                    "labels": labels.detach().cpu().numpy(),
-                    "predictions": output.argmax(dim=1).detach().cpu().numpy()
-                })
-            
-            # Calculate loss
-            loss = criterion(output, labels)  # No need to one-hot encode labels
-            # Backward pass
+            loss = criterion(output, labels)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            # Accumulate metrics
             total_loss += loss.item()
-            _, predictions = torch.max(output, dim=1)  # Get class predictions
+            _, predictions = torch.max(output, dim=1)
             correct_predictions += (predictions == labels).sum().item()
             total_samples += labels.size(0) 
         
-        # Calculate epoch metrics
         end_time = time.time()
         epoch_duration = end_time - start_time
         accuracy = correct_predictions / total_samples if total_samples > 0 else 0
         normalized_loss = total_loss / total_samples if total_samples > 0 else 0
         
-        if cfg.wandb:
-            wandb.log({
-                "epoch_loss": normalized_loss,
-                "epoch_accuracy": accuracy,
-                "epoch_duration": epoch_duration,
-            })
-
-        if cfg.data.load_model_path:
-            model_path_torch = cfg.data.load_model_path
-            print(f"Loading the model from {model_path_torch}...")
-            state_dict_torch = torch.load(model_path_torch, weights_only=True)
-            model.load_state_dict(state_dict_torch)
-            print(f"Loaded the model from {model_path_torch}.")
-
         model.eval()
         val_correct = 0
         val_total = 0
