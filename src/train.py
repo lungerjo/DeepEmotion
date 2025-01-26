@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from models.logistic_regression import LogisticRegressionModel, Small3DCNNClassifier
-from models.resnet import resnet18_classification
+from models.resnet import ResNet, BasicBlock
 import time
 import wandb
 import pickle
@@ -28,23 +28,27 @@ def main(cfg: DictConfig) -> None:
         print("Loading dataloader...")
         
     train_dataloader, val_dataloader = get_data_loaders(cfg)
+    torch.manual_seed(cfg.data.seed)
     print(f"Loaded Observations: {len(train_dataloader.dataset) + len(val_dataloader.dataset)}")
     output_dim = len(cfg.data.emotion_idx)
-    model = Small3DCNNClassifier(output_dim=output_dim)
+    # model = Small3DCNNClassifier(output_dim=output_dim)
     
-    # Need to fix the resnet model loading
+    # # Need to fix the resnet model loading
     # model = resnet18_classification(**cfg.data.resnet_model_params)
-    # pretrain_path = cfg.data.resnet_pretrain_path
-    # print(f'Loading pretrained model from {pretrain_path}')
-    # pretrain = torch.load(pretrain_path)
+    model = ResNet(BasicBlock, [1, 1, 1, 1], in_channels=1, num_classes=22)
+    # Initialize the new classification head with Xavier initialization
+    def initialize_new_layers(model):
+        for name, module in model.named_modules():
+            if 'fc' in name:
+                if isinstance(module, nn.Linear):
+                    nn.init.xavier_normal_(module.weight)
+                    if module.bias is not None:
+                        nn.init.constant_(module.bias, 0)
 
-    # # Exclude the classification head from pretrained weights
-    # pretrain_dict = {k: v for k, v in pretrain['state_dict'].items() if k in model.state_dict().keys() and 'fc' not in k}
-
-    # # Update the model's state dict with pretrained weights
-    # model.load_state_dict(pretrain_dict, strict=False)
+    initialize_new_layers(model)
     
     model = model.to(device)
+    # params = [param for param in model.parameters() if param.requires_grad]
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=cfg.data.learning_rate, weight_decay=cfg.data.weight_decay)
     save_dir = cfg.data.save_model_path
@@ -63,6 +67,10 @@ def main(cfg: DictConfig) -> None:
             data, labels = batch["data_tensor"], batch["label_tensor"]
             data = data.float().to(device)  # Ensure data is float for model input
             labels = labels.long().to(device)  # Ensure labels are integers for CrossEntropyLoss
+            
+            if data.dim() == 4:
+                data = data.unsqueeze(1)
+            
             # Forward pass
             output = model(data)
             # Log raw predictions if desired
@@ -82,7 +90,7 @@ def main(cfg: DictConfig) -> None:
             _, predictions = torch.max(output, dim=1)  # Get class predictions
             correct_predictions += (predictions == labels).sum().item()
             total_samples += labels.size(0) 
-        
+
         # Calculate epoch metrics
         end_time = time.time()
         epoch_duration = end_time - start_time
@@ -112,6 +120,8 @@ def main(cfg: DictConfig) -> None:
                 val_data = val_data.float().to(device)  # Ensure data is float for model input
                 val_labels = val_labels.long().to(device)  # Ensure labels are integers for CrossEntropyLoss
 
+                if val_data.dim() == 4:
+                    val_data = val_data.unsqueeze(1)
                 val_output = model(val_data)
                 _, val_predictions = torch.max(val_output, dim=1)
                 val_correct += (val_predictions == val_labels).sum().item()
