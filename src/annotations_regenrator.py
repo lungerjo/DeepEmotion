@@ -18,7 +18,7 @@ for filename in os.listdir(directory):
 # Display the keys of the dictionary to confirm loading
 print(sub_dataframes.keys())
 
-cluster_dict = {'e_admiration': ['e_admiration', 'e_gratification', 'e_pride', 'e_satisfaction'], 'e_hope': ['e_anger/rage', 'e_fears_confirmed', 'e_gloating', 'e_happy-for', 'e_hope', 'e_pity/compassion'], 'e_contempt': ['e_contempt', 'e_resent'], 'e_disappointment': ['e_disappointment'], 'e_fear': ['e_fear', 'e_shame'], 'e_gratitude': ['e_gratitude', 'e_remorse'], 'e_happiness': ['e_happiness', 'e_relief'], 'e_hate': ['e_hate'], 'e_love': ['e_love'], 'e_sadness': ['e_sadness']}
+cluster_dict = {'e_anger/rage': ['e_contempt', 'e_resent'], 'e_sadness': ['e_remorse', 'e_dissapointment', 'e_shame'], 'e_fear': ['e_fears_confirmed'], 'e_love': ['e_love'], 'e_admiration': ['e_gratitude'], 'e_happiness': ['e_hope', 'e_happy-for', 'e_relief', 'e_pride', 'e_satisfaction', 'e_gratification'], 'e_pity/compassion':['e_pity/compassion'], 'e_gloating': ['e_gloating'], 'e_hate': ['e_hate']}
 # Update the cluster_dict to remove 'e_' and fully capitalize every word
 updated_cluster_dict = {emotion.replace('e_', '').replace('_', ' ').upper(): [e.replace('e_', '').replace('_', ' ').upper() for e in emotions] for emotion, emotions in cluster_dict.items()}
 # Remove '/' and spaces from the keys and values in the updated_cluster_dict
