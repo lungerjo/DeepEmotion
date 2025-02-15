@@ -32,7 +32,18 @@ def main(cfg: DictConfig) -> None:
     train_dataloader, val_dataloader = get_data_loaders(cfg)
     print(f"Loaded Observations: {len(train_dataloader.dataset) + len(val_dataloader.dataset)}")
     output_dim = len(cfg.data.emotion_idx)
-    model = Small3DCNNClassifier(output_dim=output_dim)
+
+    if cfg.data.load_model:
+        model_path_torch = cfg.data.load_model_path
+        print(f"Loading the model from {model_path_torch}...")
+        state_dict_torch = torch.load(model_path_torch, weights_only=True)
+        model.load_state_dict(state_dict_torch)
+        print(f"Loaded the model from {model_path_torch}.")
+    elif cfg.model == "CNN":
+        model = CNN(cfg=cfg, output_dim=output_dim)
+    else:
+        raise ValueError(f"Error: load model as cfg.data.load_model = <model_path> or initialize valid model for cfg.model")
+
     model = model.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=cfg.data.learning_rate, weight_decay=cfg.data.weight_decay)
