@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from models.CNN import CNN
+from models.resnet import ResNet, BasicBlock
 import time
 import wandb
 import pickle
@@ -40,6 +41,19 @@ def main(cfg: DictConfig) -> None:
         print(f"Loaded the model from {model_path_torch}.")
     elif cfg.model == "CNN":
         model = CNN(cfg=cfg, output_dim=output_dim)
+    elif cfg.model == "ResNet":
+        model = ResNet(BasicBlock, [1, 1, 1, 1], in_channels=1, num_classes=22)
+        print(model)
+        # Initialize the new classification head with Xavier initialization
+        def initialize_new_layers(model):
+            for name, module in model.named_modules():
+                if 'fc' in name:
+                    if isinstance(module, nn.Linear):
+                        nn.init.xavier_normal_(module.weight)
+                        if module.bias is not None:
+                            nn.init.constant_(module.bias, 0)
+
+        initialize_new_layers(model)
     else:
         raise ValueError(f"Error: load model as cfg.data.load_model = <model_path> or initialize valid model for cfg.model")
 
@@ -58,10 +72,12 @@ def main(cfg: DictConfig) -> None:
 
         model.train()
         for batch in tqdm(train_dataloader):
-
             data, labels = batch["data_tensor"], batch["label_tensor"]
+
             data = data.float().to(device)  # Ensure data is float for model input
             labels = labels.long().to(device)  # Ensure labels are integers for CrossEntropyLoss
+            if data.dim() == 4:
+                data = data.unsqueeze(1)
 
             output = model(data)
             loss = criterion(output, labels)
