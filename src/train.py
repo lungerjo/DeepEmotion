@@ -5,8 +5,7 @@ from omegaconf import DictConfig, OmegaConf
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from models.logistic_regression import LogisticRegressionModel, Small3DCNNClassifier
-from models.resnet import resnet18_classification
+from models.CNN import CNN
 import time
 import wandb
 import pickle
@@ -21,7 +20,10 @@ def main(cfg: DictConfig) -> None:
     and trains a logistic regression model.
     """
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-    wandb.init(project="DeepEmotion", config=cfg_dict)
+    if cfg.wandb:
+        wandb.init(project="DeepEmotion", config=cfg_dict)
+        wandb.config.update(cfg_dict)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if cfg.verbose:
         print(f"Device: {device}")
@@ -31,19 +33,6 @@ def main(cfg: DictConfig) -> None:
     print(f"Loaded Observations: {len(train_dataloader.dataset) + len(val_dataloader.dataset)}")
     output_dim = len(cfg.data.emotion_idx)
     model = Small3DCNNClassifier(output_dim=output_dim)
-    
-    # Need to fix the resnet model loading
-    # model = resnet18_classification(**cfg.data.resnet_model_params)
-    # pretrain_path = cfg.data.resnet_pretrain_path
-    # print(f'Loading pretrained model from {pretrain_path}')
-    # pretrain = torch.load(pretrain_path)
-
-    # # Exclude the classification head from pretrained weights
-    # pretrain_dict = {k: v for k, v in pretrain['state_dict'].items() if k in model.state_dict().keys() and 'fc' not in k}
-
-    # # Update the model's state dict with pretrained weights
-    # model.load_state_dict(pretrain_dict, strict=False)
-    
     model = model.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=cfg.data.learning_rate, weight_decay=cfg.data.weight_decay)
@@ -59,49 +48,26 @@ def main(cfg: DictConfig) -> None:
 
         model.train()
         for batch in tqdm(train_dataloader):
-            # Extract data and labels
+
             data, labels = batch["data_tensor"], batch["label_tensor"]
             data = data.float().to(device)  # Ensure data is float for model input
             labels = labels.long().to(device)  # Ensure labels are integers for CrossEntropyLoss
-            # Forward pass
+
             output = model(data)
-            # Log raw predictions if desired
-            wandb.log({
-                "labels": labels.detach().cpu().numpy(),
-                "predictions": output.argmax(dim=1).detach().cpu().numpy()
-            })
-            
-            # Calculate loss
-            loss = criterion(output, labels)  # No need to one-hot encode labels
-            # Backward pass
+            loss = criterion(output, labels)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            # Accumulate metrics
             total_loss += loss.item()
-            _, predictions = torch.max(output, dim=1)  # Get class predictions
+            _, predictions = torch.max(output, dim=1)
             correct_predictions += (predictions == labels).sum().item()
             total_samples += labels.size(0) 
         
-        # Calculate epoch metrics
         end_time = time.time()
         epoch_duration = end_time - start_time
         accuracy = correct_predictions / total_samples if total_samples > 0 else 0
         normalized_loss = total_loss / total_samples if total_samples > 0 else 0
-        # Log epoch metrics to WandB
-        wandb.log({
-            "epoch_loss": normalized_loss,
-            "epoch_accuracy": accuracy,
-            "epoch_duration": epoch_duration,
-        })
         
-        if cfg.data.load_model_path:
-            model_path_torch = cfg.data.load_model_path
-            print(f"Loading the model from {model_path_torch}...")
-            state_dict_torch = torch.load(model_path_torch, weights_only=True)
-            model.load_state_dict(state_dict_torch)
-            print(f"Loaded the model from {model_path_torch}.")
-
         model.eval()
         val_correct = 0
         val_total = 0
@@ -122,18 +88,20 @@ def main(cfg: DictConfig) -> None:
         f"Accuracy: {accuracy*100:.2f}%, Time: {epoch_duration:.2f} seconds",
         f"Validation Accuracy: {val_accuracy * 100:.2f}")
 
-        wandb.log({
-            "epoch": epoch + 1,
-            "train_loss": normalized_loss,
-            "train_accuracy": accuracy,
-            "val_accuracy": val_accuracy
-        })
-
-        print("Deciding whether to save the model...")
+        if cfg.wandb:
+            wandb.log({
+                "epoch": epoch + 1,
+                "train_loss": normalized_loss,
+                "train_accuracy": accuracy,
+                "val_accuracy": val_accuracy
+            })
 
         if best_val_accuracy < val_accuracy and cfg.data.save_model:
             best_val_accuracy = val_accuracy
-            model_path_torch = os.path.join(save_dir, f"model_epoch_{epoch+1}.pth")
+            if cfg.wandb:
+                model_path_torch = os.path.join(save_dir, f"{wandb.run.id}_{epoch+1}.pth")
+            else:
+                model_path_torch = os.path.join(save_dir, f"{epoch+1}.pth")
             torch.save(model.state_dict(), model_path_torch)
             print(f"Model saved at {save_dir}")
 
