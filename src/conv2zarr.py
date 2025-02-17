@@ -394,7 +394,7 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
 
 @hydra.main(config_path="./configs", config_name="base", version_base="1.2")
 def main(cfg: DictConfig) -> None:
-    output_path = str((Path(cfg.data.zarr_dir_path) / "pool_emotions_threshold_3").resolve())
+    output_path = str((Path(cfg.data.zarr_dir_path)).resolve())
     if cfg.verbose:
         print("Starting Zarr dataset creation...")
     write_zarr_dataset(cfg, output_path)
