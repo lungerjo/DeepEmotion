@@ -5,7 +5,7 @@ project_root: ${hydra:runtime.cwd}/..
 verbose: True
 wandb: True
 sys_log: True
-model: CNN
+model: ResNet
 
 CNN:
   c1: 16
