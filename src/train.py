@@ -139,8 +139,14 @@ def main(cfg: DictConfig) -> None:
                 "val_accuracy": val_accuracy
             })
 
+
+    if cfg.wandb:
+        model_path_torch = os.path.join(save_dir, f"{wandb.run.id}_{epoch+1}.pth")
+    else:
+        model_path_torch = os.path.join(save_dir, f"{epoch+1}.pth")
     torch.save(model.state_dict(), model_path_torch)
     print(f"Model saved at {save_dir}")
+    
 
 if __name__ == "__main__":
     main()
