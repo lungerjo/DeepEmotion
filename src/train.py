@@ -27,7 +27,7 @@ def main(cfg: DictConfig) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if cfg.verbose:
         print(f"Device: {device}")
-        print("Loading dataloader...")
+        print(f"Loading dataloader from {cfg.data.zarr_path}")
         
     train_dataloader, val_dataloader = get_data_loaders(cfg)
     print(f"Loaded Observations: {len(train_dataloader.dataset) + len(val_dataloader.dataset)}")
