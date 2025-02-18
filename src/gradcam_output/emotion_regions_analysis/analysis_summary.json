@@ -1,0 +1,17 @@
+{
+    "emotion_samples": {
+        "NONE": 0,
+        "HAPPINESS": 29,
+        "FEAR": 18,
+        "SADNESS": 37,
+        "LOVE": 16,
+        "ANGER": 10
+    },
+    "average_confidence": {
+        "HAPPINESS": 96.56868946963343,
+        "FEAR": 94.25394733746847,
+        "SADNESS": 92.27988446081007,
+        "LOVE": 95.90313620865345,
+        "ANGER": 96.46892249584198
+    }
+}
