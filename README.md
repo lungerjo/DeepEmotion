@@ -1,4 +1,4 @@
-# DeepEmotion: Contrastive Learning for fMRI Classification of Emotions
+# DeepEmotion: 3DCNNs Learn Naturalistic Emotion from 7t fMRI
 
 ### Setup
 #### Package Dependencies

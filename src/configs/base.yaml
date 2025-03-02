@@ -23,12 +23,14 @@ CNN:
 
 train:
   epochs: 50
-  batch_size: 25
+  batch_size: 20
   shuffle: True
   train_ratio: .8
+  print_label_frequencies: True
 
 data:
   data_path: "${project_root}/data/raw/derivatives/non-linear_anatomical_alignment"
+<<<<<<< HEAD
   zarr_path: "${project_root}/dataset.zarr"
   label_path: "${project_root}/data/resampled_annotations/av1o6_resampled.tsv"
   sessions: ["01"]
@@ -36,20 +38,22 @@ data:
   file_pattern_template: "*_ses-forrestgump_task-forrestgump_rec-dico7Tad2grpbold7TadNL_run-{}_bold.nii.gz"
   subjects: ["sub-01"]
   # , "sub-02", "sub-03", "sub-04", "sub-05", "sub-06", "sub-07", "sub-08", "sub-09", "sub-11", "sub-12", "sub-13", "sub-14", "sub-15", "sub-16", "sub-17", "sub-18", "sub-19", "sub-20"]
+=======
+  zarr_dir_path: "${project_root}/zarr_datasets"
+  zarr_path: "${project_root}/zarr_datasets/pool_emotions"
+  label_path: "${project_root}/data/updated_annotations/pooled_annotations_structured.tsv"
+  sessions: ["01", "02", "03", "04", "05", "06", "07", "08"]
+  file_pattern_template: "*_ses-forrestgump_task-forrestgump_rec-dico7Tad2grpbold7TadNL_run-{}_bold.nii.gz"
+  subjects: ["sub-03"] # "sub-02", "sub-03", "sub-04", "sub-05", "sub-06", "sub-07", "sub-08", "sub-09", "sub-11", "sub-12", "sub-13", "sub-14", "sub-15", "sub-16", "sub-17", "sub-18", "sub-19", "sub-20"]
+>>>>>>> 5a457e3cf5e145e5ace8c980ee804e5eb52d3651
   session_offsets: [0, 902, 1784, 2660, 3636, 4560, 5438, 6522] # time offset at session start w.r.t. movie
-  emotion_idx: {
-    'NONE': 0, 'HAPPINESS': 1, 'FEAR': 2, 'SADNESS': 3, 'LOVE': 4,
-    'ANGERRAGE': 5, 'CONTEMPT': 6, 'GRATITUDE': 7, 'ADMIRATION': 8,
-    'COMPASSION': 9, 'PRIDE': 10, 'REMORSE': 11, 'DISAPPOINTMENT': 12,
-    'HAPPYFOR': 13, 'GLOATING': 14, 'SATISFACTION': 15, 'HOPE': 16, 
-    'HATE': 17, 'RELIEF': 18, 'SHAME': 19, 'GRATIFICATION': 20,
-    'FEARSCONFIRMED': 21
-  }
+  emotion_idx: {'NONE': 0, 'HAPPINESS': 1, 'FEAR': 2, 'SADNESS': 3, 'LOVE': 4, 'ANGER': 5}
   normalization: False
   weight_decay: 0
   learning_rate: 0.0001
   seed: 42
   save_model: True
+  load_model: False
   save_model_path: "output/models"
   load_model_path: None
 
