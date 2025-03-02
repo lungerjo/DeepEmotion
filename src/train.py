@@ -6,12 +6,13 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from models.CNN import CNN
+from models.resnet import ResNet, BasicBlock
 import time
 import wandb
 import pickle
 from collections import Counter
 from tqdm import tqdm
-
+from models.GradCam_test import MaskTuneClassifier
 
 @hydra.main(config_path="./configs", config_name="base", version_base="1.2")
 def main(cfg: DictConfig) -> None:
@@ -27,11 +28,29 @@ def main(cfg: DictConfig) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if cfg.verbose:
         print(f"Device: {device}")
-        print("Loading dataloader...")
+        print(f"Loading dataloader from {cfg.data.zarr_path}")
         
     train_dataloader, val_dataloader = get_data_loaders(cfg)
     print(f"Loaded Observations: {len(train_dataloader.dataset) + len(val_dataloader.dataset)}")
     output_dim = len(cfg.data.emotion_idx)
+
+    if cfg.train.print_label_frequencies: 
+        def get_label_frequencies(dataloader):
+            label_counts = Counter()
+            for batch in dataloader: 
+                data, labels = batch["data_tensor"], batch["label_tensor"]
+                if isinstance(labels, torch.Tensor):
+                    labels = labels.cpu().numpy()
+                label_counts.update(labels.flatten()) 
+            return label_counts
+
+        train_label_counts = get_label_frequencies(train_dataloader)
+        val_label_counts = get_label_frequencies(val_dataloader)
+        total_label_counts = train_label_counts + val_label_counts
+        for label, count in sorted(total_label_counts.items()):
+            inverse_emotion_idx = {v: k for k, v in cfg.data.emotion_idx.items()}
+            emotion_name = inverse_emotion_idx[label] 
+            print(f"{emotion_name}: {count}")
 
     if cfg.data.load_model:
         model_path_torch = cfg.data.load_model_path
@@ -41,6 +60,21 @@ def main(cfg: DictConfig) -> None:
         print(f"Loaded the model from {model_path_torch}.")
     elif cfg.model == "CNN":
         model = CNN(cfg=cfg, output_dim=output_dim)
+        masktune_clf = MaskTuneClassifier(dataset=None, algo=None, seed=10,
+                                      num_classes=output_dim, num_bias_classes=output_dim,
+                                      masking_threshold=2, gradcam_layer_depth=2, args=None)
+        masktune_clf.model = model
+        masktune_clf.setup_gradcam()
+    elif cfg.model == "ResNet":
+        model = ResNet(BasicBlock, [1, 1, 1, 1], in_channels=1, num_classes=22)
+        def initialize_new_layers(model):
+            for name, module in model.named_modules():
+                if 'fc' in name:
+                    if isinstance(module, nn.Linear):
+                        nn.init.xavier_normal_(module.weight)
+                        if module.bias is not None:
+                            nn.init.constant_(module.bias, 0)
+        initialize_new_layers(model)
     else:
         raise ValueError(f"Error: load model as cfg.data.load_model = <model_path> or initialize valid model for cfg.model")
 
@@ -59,10 +93,12 @@ def main(cfg: DictConfig) -> None:
 
         model.train()
         for batch in tqdm(train_dataloader):
-
             data, labels = batch["data_tensor"], batch["label_tensor"]
+
             data = data.float().to(device)  # Ensure data is float for model input
             labels = labels.long().to(device)  # Ensure labels are integers for CrossEntropyLoss
+            if data.dim() == 4:
+                data = data.unsqueeze(1)
 
             output = model(data)
             loss = criterion(output, labels)
@@ -88,6 +124,8 @@ def main(cfg: DictConfig) -> None:
                 val_data, val_labels = val_batch["data_tensor"], val_batch["label_tensor"]
                 val_data = val_data.float().to(device)  # Ensure data is float for model input
                 val_labels = val_labels.long().to(device)  # Ensure labels are integers for CrossEntropyLoss
+                if val_data.dim() == 4:
+                    val_data = val_data.unsqueeze(1)
 
                 val_output = model(val_data)
                 _, val_predictions = torch.max(val_output, dim=1)
@@ -107,14 +145,14 @@ def main(cfg: DictConfig) -> None:
                 "val_accuracy": val_accuracy
             })
 
-        if best_val_accuracy < val_accuracy and cfg.data.save_model:
-            best_val_accuracy = val_accuracy
-            if cfg.wandb:
-                model_path_torch = os.path.join(save_dir, f"{wandb.run.id}_{epoch+1}.pth")
-            else:
-                model_path_torch = os.path.join(save_dir, f"{epoch+1}.pth")
-            torch.save(model.state_dict(), model_path_torch)
-            print(f"Model saved at {save_dir}")
+
+    if cfg.wandb:
+        model_path_torch = os.path.join(save_dir, f"{wandb.run.id}.pth")
+    else:
+        model_path_torch = os.path.join(save_dir, "model.pth")
+    torch.save(model.state_dict(), model_path_torch)
+    print(f"Model saved at {save_dir}")
+    
 
 if __name__ == "__main__":
     main()
