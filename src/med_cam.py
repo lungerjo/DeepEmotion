@@ -7,7 +7,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
 from utils.dataset import get_data_loaders
-from models.CNN import CNN
+from models.CNN import CNN, CNNNoPool
 import hydra
 from omegaconf import DictConfig
 import matplotlib.pyplot as plt
@@ -15,20 +15,20 @@ from medcam import medcam
 from scipy.ndimage import zoom
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
+from skimage.transform import resize
 import torch.nn.functional as F
 import json
-
-# import nilearn
-# from nilearn import plotting
-# import nibabel as nib
+from pytorch_grad_cam import GradCAM
+from pytorch_grad_cam.utils.image import show_cam_on_image
+from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
 @hydra.main(config_path="configs/", config_name="base", version_base="1.2")
-def main(cfg: DictConfig) -> None:
+def med_maps(cfg: DictConfig) -> None:
     # Get emotion mapping from config
     emotion_mapping = {v: k for k, v in cfg.data.emotion_idx.items()}
     
-    model = CNN(cfg=cfg, output_dim=6)
-    model_path = '/home/paperspace/DeepEmotion/src/models/sub_04.pth'
+    model = CNNNoPool(cfg=cfg, output_dim=6)
+    model_path = '/home/paperspace/DeepEmotion/src/models/sub_01_NoPool.pth'
     model.load_state_dict(torch.load(model_path, weights_only=True))
     model.eval()
 
@@ -36,7 +36,7 @@ def main(cfg: DictConfig) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
 
-    output_dir = "/home/paperspace/DeepEmotion/src/gradcam_output/sub-04"
+    output_dir = "/home/paperspace/DeepEmotion/src/gradcam_output/sub-01/No_Pool"
     os.makedirs(output_dir, exist_ok=True)
     
     sample_data = next(iter(val_loader))["data_tensor"][0:1]
@@ -57,7 +57,7 @@ def main(cfg: DictConfig) -> None:
             print(f"Processing batch {batch_idx}")
             
             for i in range(len(batch["data_tensor"])):
-                if (batch["subject"][i] != 'sub-04'):
+                if (batch["subject"][i] != 'sub-01'):
                     continue
                 print(f"Processing sample {i}")
                 
@@ -165,14 +165,247 @@ def main(cfg: DictConfig) -> None:
                     plt.savefig(save_path, bbox_inches='tight', dpi=300)
                     plt.close()
                     
-                print(f"Saved visualization for batch {batch_idx}, sample {i}")
+                print(f"Saved visualization for batch {batch_idx}, {save_path} sample {i}")
 
-# if __name__ == "__main__":
-#     main()
+class GradCAM3DNoPool:
+    pass
+
+class GradCAM3D:
+    def __init__(self, model, target_layer, use_cuda=True):
+        self.model = model
+        self.cuda = use_cuda
+        
+        self.cam = GradCAM(
+            model=model,
+            target_layers=[target_layer]
+        )
+        
+    def generate_cam(self, input_tensor, target_category=None):
+        if len(input_tensor.shape) == 4:  
+            input_tensor = input_tensor.unsqueeze(0)  # Add batch dimension: (1, C, D, H, W)
+            
+        if target_category is None:
+            with torch.no_grad():
+                output = self.model(input_tensor)
+                prediction = output.argmax(dim=1).item()
+                target_category = prediction
+        else:
+            prediction = target_category
+        
+        # Create target for pytorch_grad_cam
+        targets = [ClassifierOutputTarget(target_category)]
+        
+        grayscale_cam = self.cam(input_tensor=input_tensor, targets=targets)
+        
+        cam = grayscale_cam[0]  
+        
+        return cam, prediction
+        
+    def visualize_cam_3d(self, input_tensor, original_img, emotion_mapping, target_category=None, save_path=None):
+        cam, prediction = self.generate_cam(input_tensor, target_category)
+
+        print(cam.shape)
+
+        if cam.shape != original_img.shape:
+            print(f"Resizing CAM from {cam.shape} to {original_img.shape}")
+            cam = resize(cam, 
+                            output_shape=original_img.shape, 
+                            order=1,  # Linear interpolation
+                            preserve_range=True)
+        
+        print(cam.shape)
+                
+        # 3D data - visualize center slices from each axis
+        fig, axes = plt.subplots(3, 2, figsize=(12, 18))
+        
+        # Get the middle slices for each dimension
+        d, h, w = original_img.shape
+        mid_d, mid_h, mid_w = d // 2, h // 2, w // 2
+        
+        # Get middle slices of original image
+        original_d = original_img[mid_d, :, :]
+        original_h = original_img[:, mid_h, :]
+        original_w = original_img[:, :, mid_w]
+        
+        # Get middle slices of CAM
+        cam_d = cam[mid_d, :, :]
+        cam_h = cam[:, mid_h, :]
+        cam_w = cam[:, :, mid_w]
+        
+        # Create heatmap overlays
+        axes[0, 0].imshow(original_d, cmap='gray')
+        axes[0, 0].set_title('Original (Depth)')
+        axes[0, 0].axis('off')
+        
+        axes[0, 1].imshow(original_d, cmap='gray')
+        axes[0, 1].imshow(cam_d, cmap='jet', alpha=0.5)
+        axes[0, 1].set_title('Grad-CAM (Depth)')
+        axes[0, 1].axis('off')
+        
+        axes[1, 0].imshow(original_h, cmap='gray')
+        axes[1, 0].set_title('Original (Height)')
+        axes[1, 0].axis('off')
+        
+        axes[1, 1].imshow(original_h, cmap='gray')
+        axes[1, 1].imshow(cam_h, cmap='jet', alpha=0.5)
+        axes[1, 1].set_title('Grad-CAM (Height)')
+        axes[1, 1].axis('off')
+        
+        axes[2, 0].imshow(original_w, cmap='gray')
+        axes[2, 0].set_title('Original (Width)')
+        axes[2, 0].axis('off')
+        
+        axes[2, 1].imshow(original_w, cmap='gray')
+        axes[2, 1].imshow(cam_w, cmap='jet', alpha=0.5)
+        axes[2, 1].set_title('Grad-CAM (Width)')
+        axes[2, 1].axis('off')
+        
+        if target_category is not None and 'emotion_mapping' in globals() and target_category in emotion_mapping:
+            emotion_name = emotion_mapping[target_category]
+            plt.suptitle(f'Emotion: {emotion_name}', fontsize=16)
+        else:
+            plt.suptitle(f'Class: {prediction}', fontsize=16)
+        
+        plt.tight_layout()
+        
+        if save_path:
+            plt.savefig(save_path)
+            plt.close()
+        else:
+            plt.show()
+            
+    def visualize_average_cam_3d(self, input_tensor, original_img, emotion_mapping, target_category=None, save_path=None):
+        """
+        Visualize average Grad-CAM across all dimensions for 3D input
+        
+        Args:
+            input_tensor: Input image tensor
+            original_img: Original image (should be in range [0,1])
+            target_category: Category to generate CAM for
+            save_path: Path to save the visualization
+            
+        Returns:
+            None
+        """
+        cam, prediction = self.generate_cam(input_tensor, target_category)
+
+        print(cam.shape)
+
+        if cam.shape != original_img.shape:
+            print(f"Resizing CAM from {cam.shape} to {original_img.shape}")
+            cam = resize(cam, 
+                            output_shape=original_img.shape, 
+                            order=1,  # Linear interpolation
+                            preserve_range=True)
+        
+        print(cam.shape)
+
+        avg_d = np.mean(original_img, axis=0)  # Average across depth
+        avg_h = np.mean(original_img, axis=1)  # Average across height
+        avg_w = np.mean(original_img, axis=2)  # Average across width
+        
+        # Calculate average projections for CAM
+        cam_avg_d = np.mean(cam, axis=0)  # Average across depth
+        cam_avg_h = np.mean(cam, axis=1)  # Average across height
+        cam_avg_w = np.mean(cam, axis=2)  # Average across width
+        
+        # Create figure with 3 rows and 2 columns
+        fig, axes = plt.subplots(3, 2, figsize=(12, 18))
+        
+        # Row 1: Depth average projections
+        axes[0, 0].imshow(avg_d, cmap='gray')
+        axes[0, 0].set_title('Original (Depth Avg)')
+        axes[0, 0].axis('off')
+        
+        axes[0, 1].imshow(avg_d, cmap='gray')
+        axes[0, 1].imshow(cam_avg_d, cmap='jet', alpha=0.5)
+        axes[0, 1].set_title('Grad-CAM (Depth Avg)')
+        axes[0, 1].axis('off')
+        
+        # Row 2: Height average projections
+        axes[1, 0].imshow(avg_h, cmap='gray')
+        axes[1, 0].set_title('Original (Height Avg)')
+        axes[1, 0].axis('off')
+        
+        axes[1, 1].imshow(avg_h, cmap='gray')
+        axes[1, 1].imshow(cam_avg_h, cmap='jet', alpha=0.5)
+        axes[1, 1].set_title('Grad-CAM (Height Avg)')
+        axes[1, 1].axis('off')
+        
+        # Row 3: Width average projections
+        axes[2, 0].imshow(avg_w, cmap='gray')
+        axes[2, 0].set_title('Original (Width Avg)')
+        axes[2, 0].axis('off')
+        
+        axes[2, 1].imshow(avg_w, cmap='gray')
+        axes[2, 1].imshow(cam_avg_w, cmap='jet', alpha=0.5)
+        axes[2, 1].set_title('Grad-CAM (Width Avg)')
+        axes[2, 1].axis('off')
+        
+        # Add a super title with emotion name if available
+        if target_category is not None and 'emotion_mapping' in globals() and target_category in emotion_mapping:
+            emotion_name = emotion_mapping[target_category]
+            plt.suptitle(f'Averaged Grad-CAM Projections\nEmotion: {emotion_name}', fontsize=16)
+        else:
+            plt.suptitle(f'Averaged Grad-CAM Projections\nClass: {prediction}', fontsize=16)
+        
+        plt.tight_layout()
+        
+        if save_path:
+            plt.savefig(save_path)
+            plt.close()
+        else:
+            plt.show()
+    
+
+@hydra.main(config_path="configs/", config_name="base", version_base="1.2")
+def other_maps(cfg: DictConfig) -> None:
+    emotion_mapping = {v: k for k, v in cfg.data.emotion_idx.items()}
+    
+    model = CNN(cfg=cfg, output_dim=6)
+    model_path = '/home/paperspace/DeepEmotion/src/models/sub_04.pth'
+    model.load_state_dict(torch.load(model_path, weights_only=True))
+    model.eval()
+
+    _, val_loader = get_data_loaders(cfg)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+
+    output_dir = "/home/paperspace/DeepEmotion/src/gradcam_output/other_library/conv1/"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    gradcam = GradCAM3D(model=model, target_layer=model.conv1, use_cuda=torch.cuda.is_available())
+    
+    for batch_idx, batch in enumerate(val_loader):
+        print(f"Processing batch {batch_idx}")
+        
+        if batch_idx >= 5:  
+            break
+            
+        for i in range(len(batch["data_tensor"])):
+            if (batch["subject"][i] != 'sub-04'):
+                continue
+            print(f"Processing sample {i}")
+            
+            data = batch["data_tensor"][i:i+1].to(device)
+            label = batch["label_tensor"][i:i+1].to(device)
+            
+            emotion_name = emotion_mapping.get(label.item(), f"Unknown ({label.item()})")
+            
+            original_img = data.squeeze(0).cpu().numpy()
+            
+            original_img = (original_img - original_img.min()) / (original_img.max() - original_img.min() + 1e-8)
+            
+            # save_path = os.path.join(output_dir, f"sample_{batch_idx}_{i}_emotion_{emotion_name}.png")
+            # gradcam.visualize_cam_3d(data, original_img, target_category=label.item(), save_path=save_path, emotion_mapping=emotion_mapping)
+            
+            avg_save_path = os.path.join(output_dir, f"sample_{batch_idx}_{i}_emotion_{emotion_name}_avg.png")
+            gradcam.visualize_average_cam_3d(data, original_img, target_category=label.item(), save_path=avg_save_path, emotion_mapping=emotion_mapping)
+    
+    print(f"Grad-CAM visualizations saved to {output_dir}")
 
 @hydra.main(config_path="configs/", config_name="base", version_base="1.2")
 def analyze_emotion_regions(cfg: DictConfig) -> None:
-    # Get emotion mapping from config
     emotion_mapping = {v: k for k, v in cfg.data.emotion_idx.items()}
     
     model = CNN(cfg=cfg, output_dim=6)
@@ -187,7 +420,6 @@ def analyze_emotion_regions(cfg: DictConfig) -> None:
     output_dir = "/home/paperspace/DeepEmotion/src/gradcam_output/emotion_regions_analysis"
     os.makedirs(output_dir, exist_ok=True)
     
-    # Initialize dictionaries to store aggregated attention maps for each emotion
     emotion_attention_maps = {emotion: [] for emotion in emotion_mapping.values()}
     emotion_correct_predictions = {emotion: [] for emotion in emotion_mapping.values()}
     
@@ -230,16 +462,13 @@ def analyze_emotion_regions(cfg: DictConfig) -> None:
     # Create averaged attention maps and visualizations for each emotion
     for emotion in emotion_mapping.values():
         if len(emotion_attention_maps[emotion]) > 0:
-            # Average attention maps for this emotion
             avg_attention_map = np.mean(emotion_attention_maps[emotion], axis=0)
-            
-            # Create visualization
+
             fig, axes = plt.subplots(3, 2, figsize=(16, 24))
             
             # Get a representative brain scan for visualization
             sample_data = next(iter(val_loader))["data_tensor"][0].numpy()
             
-            # Axial view
             axial_slice = sample_data.mean(axis=2)
             att_axial = avg_attention_map.mean(axis=2)
             att_axial_resized = F.interpolate(
@@ -259,7 +488,6 @@ def analyze_emotion_regions(cfg: DictConfig) -> None:
             plt.colorbar(im0, ax=axes[0, 1])
             axes[0, 1].axis('off')
             
-            # Coronal view
             coronal_slice = np.flipud(sample_data.mean(axis=1).T).copy()
             att_coronal = np.flipud(avg_attention_map.mean(axis=1).T).copy()
             att_coronal_resized = F.interpolate(
@@ -278,8 +506,7 @@ def analyze_emotion_regions(cfg: DictConfig) -> None:
             axes[1, 1].set_title(f'{emotion} Attention - Coronal View')
             plt.colorbar(im1, ax=axes[1, 1])
             axes[1, 1].axis('off')
-            
-            # Sagittal view
+
             sagittal_slice = np.flipud(sample_data.mean(axis=0).T).copy()
             att_sagittal = np.flipud(avg_attention_map.mean(axis=0).T).copy()
             att_sagittal_resized = F.interpolate(
@@ -299,7 +526,6 @@ def analyze_emotion_regions(cfg: DictConfig) -> None:
             plt.colorbar(im2, ax=axes[2, 1])
             axes[2, 1].axis('off')
 
-            # Add summary statistics
             n_samples = len(emotion_attention_maps[emotion])
             avg_confidence = np.mean([pred['confidence'] for pred in emotion_correct_predictions[emotion]]) * 100
             
@@ -310,14 +536,12 @@ def analyze_emotion_regions(cfg: DictConfig) -> None:
             plt.suptitle(title, fontsize=16, y=0.98)
             plt.tight_layout(pad=3.0)
             
-            # Save visualization
             save_path = os.path.join(output_dir, f"{emotion}_brain_regions.png")
             plt.savefig(save_path, bbox_inches='tight', dpi=300)
             plt.close()
             
             print(f"Completed analysis for {emotion} emotion")
             
-    # Save summary statistics
     summary = {
         'emotion_samples': {emotion: len(maps) for emotion, maps in emotion_attention_maps.items()},
         'average_confidence': {
@@ -331,4 +555,5 @@ def analyze_emotion_regions(cfg: DictConfig) -> None:
         json.dump(summary, f, indent=4)
 
 if __name__ == "__main__":
-    analyze_emotion_regions()
+    other_maps()
+    # analyze_emotion_regions()
