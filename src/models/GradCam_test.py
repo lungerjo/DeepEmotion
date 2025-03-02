@@ -8,8 +8,8 @@ from pytorch_grad_cam import XGradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
 # from engine_animals.baselines1 import ERMClassifier
-from engine_miccai.base_classifier import ERMClassifier
-from engine_miccai import utils
+# from engine_miccai.base_classifier import ERMClassifier
+# from engine_miccai import utils
 
 class GradCamWrapper(nn.Module):
     def __init__(self, model):

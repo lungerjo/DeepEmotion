@@ -1,22 +1,9 @@
 import torch
-<<<<<<< HEAD
-
-num_gpus = torch.cuda.device_count()
-print(f"Number of GPUs available: {num_gpus}")
-
 import torch.nn as nn
-import torch
-=======
-import torch.nn as nn
->>>>>>> 5a457e3cf5e145e5ace8c980ee804e5eb52d3651
 import torch.nn.functional as F
 from torch.autograd import Variable
 from functools import partial
 
-<<<<<<< HEAD
-
-=======
->>>>>>> 5a457e3cf5e145e5ace8c980ee804e5eb52d3651
 def conv3x3x3(in_planes, out_planes, stride=1, dilation=1):
     # 3x3x3 convolution with padding
     return nn.Conv3d(
@@ -57,11 +44,7 @@ class BasicBlock(nn.Module):
 
     def forward(self, x):
         residual = x
-<<<<<<< HEAD
-
-=======
         
->>>>>>> 5a457e3cf5e145e5ace8c980ee804e5eb52d3651
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
@@ -120,13 +103,7 @@ class ResNet(nn.Module):
     def __init__(self,
                  block,
                  layers,
-<<<<<<< HEAD
-                 sample_input_D,
-                 sample_input_H,
-                 sample_input_W,
-=======
                  in_channels,
->>>>>>> 5a457e3cf5e145e5ace8c980ee804e5eb52d3651
                  num_classes,  # Changed from num_seg_classes to num_classes
                  shortcut_type='B',
                  no_cuda=False):
@@ -134,11 +111,7 @@ class ResNet(nn.Module):
         self.inplanes = 64
         self.no_cuda = no_cuda
         self.conv1 = nn.Conv3d(
-<<<<<<< HEAD
-            1,
-=======
             in_channels,
->>>>>>> 5a457e3cf5e145e5ace8c980ee804e5eb52d3651
             64,
             kernel_size=7,
             stride=(2, 2, 2),
@@ -158,14 +131,6 @@ class ResNet(nn.Module):
         # placeholder for the gradients
         self.gradients = None
 
-<<<<<<< HEAD
-        # Remove or comment out the segmentation head
-        # self.conv_seg = nn.Sequential(
-        #     ...
-        # )
-
-=======
->>>>>>> 5a457e3cf5e145e5ace8c980ee804e5eb52d3651
         # Add a classification head
         self.global_pool = nn.AdaptiveAvgPool3d((1, 1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)  # Binary classification (2 classes)
@@ -219,11 +184,7 @@ class ResNet(nn.Module):
         x = self.layer4(x)
 
         # register hook (needed for grad-cam)
-<<<<<<< HEAD
-        if reg_hook:
-=======
         if reg_hook and x.requires_grad:
->>>>>>> 5a457e3cf5e145e5ace8c980ee804e5eb52d3651
             x.register_hook(self.activations_hook)
 
         # Classification head
@@ -257,49 +218,6 @@ class ResNet(nn.Module):
         
         return x  # Return the activations from the last convolutional layer
 
-<<<<<<< HEAD
-def resnet10_classification(**kwargs):
-    """Constructs a ResNet-18 model.
-    """
-    model = ResNet(BasicBlock, [1, 1, 1, 1], **kwargs)
-    return model
-
-def resnet18_classification(**kwargs):
-    """Constructs a ResNet-18 model.
-    """
-    model = ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
-    return model
-
-def resnet34_classification(**kwargs):
-    """Constructs a ResNet-34 model.
-    """
-    model = ResNet(BasicBlock, [3, 4, 6, 3], **kwargs)
-    return model
-
-def resnet50_classification(**kwargs):
-    """Constructs a ResNet-50 model.
-    """
-    model = ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
-    return model
-
-def resnet101_classification(**kwargs):
-    """Constructs a ResNet-101 model.
-    """
-    model = ResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
-    return model
-
-def resnet152_classification(**kwargs):
-    """Constructs a ResNet-101 model.
-    """
-    model = ResNet(Bottleneck, [3, 8, 36, 3], **kwargs)
-    return model
-
-def resnet200_classification(**kwargs):
-    """Constructs a ResNet-101 model.
-    """
-    model = ResNet(Bottleneck, [3, 24, 36, 3], **kwargs)
-    return model
-=======
 # Use cases:
 # def resnet10_classification(**kwargs):
 #     """Constructs a ResNet-18 model.
@@ -342,4 +260,3 @@ def resnet200_classification(**kwargs):
 #     """
 #     model = ResNet(Bottleneck, [3, 24, 36, 3], **kwargs)
 #     return model
->>>>>>> 5a457e3cf5e145e5ace8c980ee804e5eb52d3651
