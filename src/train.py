@@ -12,7 +12,7 @@ import wandb
 import pickle
 from collections import Counter
 from tqdm import tqdm
-from models.GradCam_test import MaskTuneClassifier
+from models.GradCam_test import setup_gradcam
 
 @hydra.main(config_path="./configs", config_name="base", version_base="1.2")
 def main(cfg: DictConfig) -> None:
@@ -60,11 +60,8 @@ def main(cfg: DictConfig) -> None:
         print(f"Loaded the model from {model_path_torch}.")
     elif cfg.model == "CNN":
         model = CNN(cfg=cfg, output_dim=output_dim)
-        masktune_clf = MaskTuneClassifier(dataset=None, algo=None, seed=10,
-                                      num_classes=output_dim, num_bias_classes=output_dim,
-                                      masking_threshold=2, gradcam_layer_depth=2, args=None)
-        masktune_clf.model = model
-        masktune_clf.setup_gradcam()
+        cam = setup_gradcam(model, use_cuda=torch.cuda.is_available())
+        
     elif cfg.model == "ResNet":
         model = ResNet(BasicBlock, [1, 1, 1, 1], in_channels=1, num_classes=22)
         def initialize_new_layers(model):
