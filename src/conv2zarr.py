@@ -14,7 +14,9 @@ class CrossSubjectDataset:
         self.data_path = Path(cfg.data.data_path).resolve()
         self.label_path = Path(cfg.data.label_path).resolve()
         self.subjects = cfg.data.subjects
+        self.precompute = cfg.data.precompute
         self.file_pattern_template = cfg.data.file_pattern_template
+        self.mask_file_pattern_template = cfg.data.mask_pattern_template
         self.sessions = cfg.data.sessions
         self.session_offsets = cfg.data.session_offsets  # Cumulative time offsets for alignment
         self.verbose = cfg.verbose
@@ -22,14 +24,18 @@ class CrossSubjectDataset:
         self.normalization = cfg.data.normalization
         self.observer_labels = pd.read_csv(self.label_path, sep='\t')
 
-        # Find data files and get number of timepoints
-        self.volume_paths_per_session, self.num_timepoints_per_volume = self._load_data_info()
+        self.volume_paths_per_session, self.num_timepoints_per_volume, self.mask_paths_per_session = self._load_data_info()
 
-        # Flatten the data files and num_timepoints lists
+        # Flatten the data and mask file lists
         self.data_files = []
+        self.mask_files = []
         self.num_timepoints = []
-        for volume_paths, num_timepoints_per_volume in zip(self.volume_paths_per_session, self.num_timepoints_per_volume):
+        for volume_paths, num_timepoints_per_volume, mask_paths in zip(
+                self.volume_paths_per_session,
+                self.num_timepoints_per_volume,
+                self.mask_paths_per_session):
             self.data_files.extend(volume_paths)
+            self.mask_files.extend(mask_paths)
             self.num_timepoints.extend(num_timepoints_per_volume)
 
         if self.verbose:
@@ -101,27 +107,83 @@ class CrossSubjectDataset:
             print(f"{sum(len(subject_files) for subject_files in session_files)} volumes found")
         return session_files
 
+    def _find_mask_files(self):
+        """Searches for masks in all subject directories and runs based on the mask_file pattern."""
+        session_files = []
+        if self.verbose:
+            print("Finding mask files")
+        for session in self.sessions:
+            subject_files = []
+            for subject in self.subjects:
+                subject_dir = self.data_path / subject / "ses-forrestgump/func"
+                if self.verbose:
+                    print(f"Looking in {subject_dir} for masks")
+                # Format the mask pattern with the session identifier.
+                file_pattern = self.mask_file_pattern_template.format(session)
+                matched_files = list(subject_dir.rglob(file_pattern))
+                subject_files.extend(matched_files)
+            session_files.append(subject_files)
+        if self.verbose:
+            total_masks = sum(len(files) for files in session_files)
+            print(f"{total_masks} mask volumes found")
+        return session_files
+    
+    def _precompute_masked_volume(self, volume_path, mask_path):
+        nii_image = nib.load(str(volume_path))
+        volume = nii_image.get_fdata(dtype=np.float32)
+    
+        # Load the mask (expected shape: [x, y, z])
+        mask_img = nib.load(str(mask_path))
+        mask = mask_img.get_fdata(dtype=np.float32)
+        
+        # Ensure mask has a time dimension for broadcasting (shape: [x, y, z, 1])
+        if mask.ndim == 3:
+            mask = mask[..., None]
+        
+        # Precompute the masked volume
+        masked_volume = volume * mask
+        return masked_volume
+    
+    def get_precomputed_masked_volumes(self):
+        """
+        Public method that precomputes and returns a list of masked volumes for each data file.
+        This wraps around the private _precompute_masked_volume method.
+        """
+        precomputed_volumes = []
+        for file_path, mask_path in zip(self.data_files, self.mask_files):
+            masked_volume = self._precompute_masked_volume(file_path, mask_path)
+            precomputed_volumes.append(masked_volume)
+        return precomputed_volumes
+
     def _load_data_info(self):
-        """Gets the number of timepoints for each data file without loading data into memory."""
+        """Gets the number of timepoints for each data file without loading data into memory.
+        Also retrieves the mask file paths corresponding to each data volume.
+        """
         session_files = self._find_files()
+        mask_files = self._find_mask_files()  # New: retrieve mask file paths
         volume_paths_per_session = []
+        mask_paths_per_session = []  # New list to store mask paths per session
         num_timepoints_per_volume = []
 
-        for session_idx, subject_files in enumerate(session_files):
+        for session_idx, (subject_files, subject_mask_files) in enumerate(zip(session_files, mask_files)):
             volume_paths = []
+            volume_mask_paths = []  # For mask files in this session
             volume_num_timepoints = []
-            for volume_path in subject_files:
+            # Assumes that the order of subject_files and subject_mask_files is aligned.
+            for volume_path, mask_path in zip(subject_files, subject_mask_files):
                 nii_img = nib.load(str(volume_path))
                 shape = nii_img.shape  # (x, y, z, t)
                 volume_num_timepoints.append(shape[-1])  # Number of timepoints (t)
                 volume_paths.append(volume_path)
+                volume_mask_paths.append(mask_path)  # Store the corresponding mask path
             volume_paths_per_session.append(volume_paths)
+            mask_paths_per_session.append(volume_mask_paths)
             num_timepoints_per_volume.append(volume_num_timepoints)
 
         if self.verbose:
             print(f"num_timepoints_per_volume {num_timepoints_per_volume}")
 
-        return volume_paths_per_session, num_timepoints_per_volume
+        return volume_paths_per_session, num_timepoints_per_volume, mask_paths_per_session
 
     def _create_index_mappings(self):
         """
@@ -195,8 +257,6 @@ class CrossSubjectDataset:
                 print(mapping)
 
         return index_mappings
-
-
 
 def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
     if cfg.verbose:
@@ -311,21 +371,28 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
 
     # Keep track of valid timepoints per file
     valid_timepoints = np.zeros(n_files, dtype='int32')
+    
+    # Get the precomputed version of data_files, if enabled.
+    if cfg.data.precompute:
+        volumes = dataset.get_precomputed_masked_volumes()
+    else:
+        volumes = dataset.data_files
 
     # Write all volumes
-    for i, file_path in enumerate(data_files):
+    for i, item in enumerate(volumes):
         if cfg.verbose:
-            print(f"  Loading file {i}: {file_path}")
+            print(f"  Processing file {i}")
 
-        # Load the entire file into memory as a float32 volume
-        nii_img = nib.load(str(file_path))
-        volume = nii_img.get_fdata(dtype=np.float32)  # shape: (x, y, z, t_current)
+        if cfg.data.precompute:
+            volume = item
+        else:
+            nii_img = nib.load(str(item))
+            volume = nii_img.get_fdata(dtype=np.float32)
+            del nii_img
+
         t_current = volume.shape[-1]
-
-        # Record the valid timepoints for this file
         valid_timepoints[i] = t_current
 
-        # Optional normalization
         if cfg.data.normalization:
             mean_val = volume.mean()
             std_val = volume.std() + 1e-5
@@ -334,20 +401,14 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
         if cfg.verbose:
             print(f"  Writing file {i} with shape {volume.shape} into data_zarr, padded up to {t_max} timepoints.")
 
-        # Write to Zarr
         data_zarr[i, ..., :t_current] = volume
-        # Rest remains zero-padded
-
-        # Free memory
         del volume
-        del nii_img
 
     if cfg.verbose:
         print("Storing metadata: file paths, subjects, sessions...")
 
     file_paths = np.array([str(p) for p in data_files], dtype=object)
 
-    # Determine max lengths for strings
     max_path_len = max(len(p) for p in file_paths)
     max_sub_len = max(len(s) for s in subjects)
     max_ses_len = max(len(s) for s in sessions)
