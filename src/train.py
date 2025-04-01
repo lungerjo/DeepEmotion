@@ -141,9 +141,9 @@ def main(cfg: DictConfig) -> None:
 
 
     if cfg.wandb:
-        model_path_torch = os.path.join(save_dir, f"{wandb.run.id}.pth")
+        model_path_torch = os.path.join(save_dir, f"{wandb.run.id}-sub02-20.pth")
     else:
-        model_path_torch = os.path.join(save_dir, "model.pth")
+        model_path_torch = os.path.join(save_dir, "model-sub02-20.pth")
     torch.save(model.state_dict(), model_path_torch)
     print(f"Model saved at {save_dir}")
     
