@@ -48,7 +48,7 @@ def pooled_label_and_count(row):
     most_common_label, max_count = counts.most_common(1)[0]
     
     # Ensure the label appears at least twice
-    if max_count < 5:
+    if max_count < 1:
         return "NONE", 0
     
     return most_common_label, max_count
