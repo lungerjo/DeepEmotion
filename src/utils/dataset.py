@@ -20,7 +20,7 @@ class ZarrDataset(Dataset):
         self.session_ids = self.store['session_ids'][:]  # shape: (num_sessions,)
         self.file_to_subject = self.store['file_to_subject'][:]  # shape: (n_files,)
         self.file_to_session = self.store['file_to_session'][:]  # shape: (n_files,)
-
+        
         # Attributes
         self.emotions = self.store.attrs.get('emotions', [])
         self.aligned_labels_csv = self.store.attrs.get('aligned_labels', None)
@@ -166,3 +166,58 @@ if __name__ == "__main__":
             print(f"    Data shape: {batch['data_tensor'][i].shape}")
             print(f"    Label: {batch['label_tensor'][i].item()}")
         break
+
+class ContrastivePairDataset(Dataset):
+    """
+    Wraps a base dataset to yield anchor, positive, and negative samples
+    based on label matching. 
+    Positive pairs have the same label. Negatives differ in label.
+    """
+    def __init__(self, base_dataset: ZarrDataset, seed: int = 123):
+        super().__init__()
+        self.base = base_dataset
+        self.rng = np.random.default_rng(seed=seed)
+
+        # Build a dict: label -> all valid indices with that label
+        self.label_to_indices = {}
+        for idx in range(len(self.base)):
+            label = self.base[idx]['label_tensor'].item()
+            self.label_to_indices.setdefault(label, []).append(idx)
+
+        # Preconvert all labels to a list so we can quickly sample negative labels
+        self.all_labels = sorted(self.label_to_indices.keys())
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, anchor_idx):
+        anchor_dict = self.base[anchor_idx]
+        anchor_label = anchor_dict['label_tensor'].item()
+
+        if hasattr(self.base, 'verbose') and self.base.verbose:
+            print(f"[Dataset] Anchor idx: {anchor_idx}, label: {anchor_label}")
+
+        # Positive sample
+        pos_indices = self.label_to_indices[anchor_label]
+        positive_idx = anchor_idx
+        if len(pos_indices) > 1:
+            while positive_idx == anchor_idx:
+                positive_idx = self.rng.choice(pos_indices)
+        positive_dict = self.base[positive_idx]
+
+        # Negative sample
+        negative_label = anchor_label
+        while negative_label == anchor_label and len(self.all_labels) > 1:
+            negative_label = self.rng.choice(self.all_labels)
+        neg_indices = self.label_to_indices[negative_label]
+        negative_idx = self.rng.choice(neg_indices)
+        negative_dict = self.base[negative_idx]
+
+        return {
+            "anchor": anchor_dict["data_tensor"],
+            "positive": positive_dict["data_tensor"],
+            "negative": negative_dict["data_tensor"],
+            "anchor_label": anchor_dict["label_tensor"],
+            "positive_label": positive_dict["label_tensor"],
+            "negative_label": negative_dict["label_tensor"]
+        }
