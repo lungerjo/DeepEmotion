@@ -171,7 +171,7 @@ class ContrastivePairDataset(Dataset):
     """
     Wraps a base dataset to yield anchor, positive, and negative samples
     based on label matching. 
-    Positive pairs have the same label. Negatives differ in label.
+    Positive pairs have the same label. Negatives differ in qlabel.
     """
     def __init__(self, base_dataset: ZarrDataset, seed: int = 123):
         super().__init__()

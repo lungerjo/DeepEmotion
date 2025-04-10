@@ -2,7 +2,7 @@ import pandas as pd
 import os
 from collections import Counter
 
-directory = '/home/paperspace/DeepEmotion/data/annotations/src/emotions/data/resampled'
+directory = '/home/paperspace/DeepEmotion/data/resampled_annotations'
 
 def print_emotion_frequencies(df, name):
     emotion_counts = Counter(df['emotion'])
