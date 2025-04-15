@@ -54,6 +54,8 @@ def imports(cfg, timers=None):
     return modules
 
 def setup_wandb(cfg, cfg_dict, timers):
+    if cfg.verbose.build:
+        print(f"[BUILD] Initializing Weights & Biases...")
     @time_step("WandB Init", timers=timers, verbose=cfg.verbose.time)
     def _setup():
         import wandb
@@ -69,6 +71,8 @@ def load_dataloaders(cfg, timers):
     return _load()
 
 def build_model(cfg, output_dim, modules, timers):
+    if cfg.verbose.build:
+        print(f"[BUILD] Constructing model: {cfg.model}...")
     torch = modules["torch"]
     CNN = modules["CNN"]
     ResNet = modules["ResNet"]
@@ -100,6 +104,8 @@ def move_model_to_device(model, device, cfg, timers):
     return _move()
 
 def setup_optimizer_and_loss(model, cfg, modules, timers):
+    if cfg.verbose.build:
+        print(f"[BUILD] Setting up optimizer and loss function...")
     nn, optim = modules["nn"], modules["optim"]
     @time_step("Init Optimizer & Loss", timers=timers, verbose=cfg.verbose.time)
     def _setup():
@@ -109,12 +115,14 @@ def setup_optimizer_and_loss(model, cfg, modules, timers):
     return _setup()
 
 def ensure_save_directory(path, modules, cfg, timers):
+    if cfg.verbose.build:
+        print(f"[BUILD] Ensuring model save directory: {path}")
     os = modules["os"]
     @time_step("Ensure Save Directory", timers=timers, verbose=cfg.verbose.time)
     def _ensure():
         os.makedirs(path, exist_ok=True)
     _ensure()
-
+    
 def load_dataloaders(cfg, modules, timers):
     ZarrDataset = modules["ZarrDataset"]
     DataLoader = modules["torch"].utils.data.DataLoader
