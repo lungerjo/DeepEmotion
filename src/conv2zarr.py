@@ -11,8 +11,12 @@ import numpy as np
 # Directly embedding a minimal version of CrossSubjectDataset here
 class CrossSubjectDataset:
     def __init__(self, cfg: DictConfig):
-        self.data_path = Path(cfg.data.data_path).resolve()
-        self.label_path = Path(cfg.data.label_path).resolve()
+        self.data_path = (Path(cfg.project_root) / cfg.data.data_path).resolve()
+        self.label_path = (Path(cfg.project_root) / cfg.data.label_path).resolve()
+        if cfg.verbose:
+            print(f"[DEBUG] Resolved data path: {self.data_path}")
+            print(f"[DEBUG] Resolved label path: {self.label_path}")
+
         self.subjects = cfg.data.subjects
         self.file_pattern_template = cfg.data.file_pattern_template
         self.sessions = cfg.data.sessions
@@ -84,21 +88,29 @@ class CrossSubjectDataset:
 
     def _find_files(self):
         """Searches for files in all subject directories and runs based on the file pattern."""
-        session_files = []
         if self.verbose:
-            print(f"Finding files")
+            print(f"[DEBUG] Finding files using pattern: {self.file_pattern_template}")
+        session_files = []
+
         for session in self.sessions:
+            if self.verbose:
+                print(f"[DEBUG] Looking for session: {session}")
             subject_files = []
             for subject in self.subjects:
                 subject_dir = self.data_path / subject / "ses-forrestgump/func"
-                if self.verbose:
-                    print(f"Looking in {subject_dir}")
                 file_pattern = self.file_pattern_template.format(session)
+
+                if self.verbose:
+                    print(f"[DEBUG] Looking in directory: {subject_dir}")
+                    print(f"[DEBUG] Using file pattern: {file_pattern}")
+
                 matched_files = list(subject_dir.rglob(file_pattern))
+                if self.verbose:
+                    print(f"[DEBUG] Found {len(matched_files)} files for subject {subject} session {session}")
+
                 subject_files.extend(matched_files)
             session_files.append(subject_files)
-        if self.verbose:
-            print(f"{sum(len(subject_files) for subject_files in session_files)} volumes found")
+
         return session_files
 
     def _load_data_info(self):
@@ -107,7 +119,12 @@ class CrossSubjectDataset:
         volume_paths_per_session = []
         num_timepoints_per_volume = []
 
+        if self.verbose:
+            print(f"[DEBUG] Loading data info for {len(session_files)} sessions")
+
         for session_idx, subject_files in enumerate(session_files):
+            if self.verbose:
+                print(f"[DEBUG] Session {session_idx}: Found {len(subject_files)} files")
             volume_paths = []
             volume_num_timepoints = []
             for volume_path in subject_files:
@@ -394,6 +411,12 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
 
 @hydra.main(config_path="./configs", config_name="base", version_base="1.2")
 def main(cfg: DictConfig) -> None:
+
+    if cfg.verbose:
+        print(f"[DEBUG] Current working directory: {Path.cwd()}")
+        print(f"[DEBUG] Hydra project root: {cfg.project_root}")
+        print(f"[DEBUG] Config-resolved data path: {cfg.data.data_path}")
+        print(f"[DEBUG] Full resolved data path: {(Path(cfg.project_root) / cfg.data.data_path).resolve()}")
     output_path = str((Path(cfg.data.zarr_dir_path) / "pool_emotions").resolve())
     if cfg.verbose:
         print("Starting Zarr dataset creation...")
