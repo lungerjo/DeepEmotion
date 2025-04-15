@@ -4,6 +4,7 @@
 [submodule "data/raw"]
 	path = data/raw
 	url = https://github.com/OpenNeuroDatasets/ds000113.git
+	update = none
 [submodule "data/annotations"]
 	path = data/annotations
 	url = https://github.com/psychoinformatics-de/studyforrest-data-annotations.git
