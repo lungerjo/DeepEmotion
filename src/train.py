@@ -1,169 +1,83 @@
-from utils.dataset import get_data_loaders
-import os
 import hydra
 from omegaconf import DictConfig, OmegaConf
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from models.CNN import CNN
-from models.resnet import ResNet, BasicBlock
-import time
-import wandb
-import pickle
-from collections import Counter
-from tqdm import tqdm
+from utils import build
 
 @hydra.main(config_path="./configs", config_name="base", version_base="1.2")
 def main(cfg: DictConfig) -> None:
-    """
-    Main function that initializes the DataLoader, processes the dataset,
-    and trains a logistic regression model.
-    """
+    timers = {}
+    modules = build.imports(cfg, timers)
+
+    torch = modules["torch"]
+    wandb = modules["wandb"]
+    os = modules["os"]
+    tqdm = modules["tqdm"]
+
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
     if cfg.wandb:
-        if cfg.verbose.build:
-            print(f"[BUILD] Initializing wandb...")
-        wandb.init(project="DeepEmotion", config=cfg_dict)
-        wandb.config.update(cfg_dict)
+        build.setup_wandb(cfg, cfg_dict, timers)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if cfg.verbose.build:
-        print(f"[BUILD] Device: {device}")
-        print(f"[BUILD] Loading dataloader from {cfg.data.zarr_path}...")
-        
-    train_dataloader, val_dataloader = get_data_loaders(cfg)
-    if cfg.verbose.build:
-        print(f"[BUILD] Loaded Observations: {len(train_dataloader.dataset) + len(val_dataloader.dataset)}")
+    train_loader, val_loader = build.load_dataloaders(cfg, modules, timers)
 
     output_dim = len(cfg.data.emotion_idx)
+    model = build.build_model(cfg, output_dim, modules, timers)
+    model = build.move_model_to_device(model, device, cfg, timers)
+    criterion, optimizer = build.setup_optimizer_and_loss(model, cfg, modules, timers)
+    build.ensure_save_directory(cfg.data.save_model_path, modules, cfg, timers)
 
-    if cfg.train.print_label_frequencies: 
-        if cfg.verbose.build:
-            print("[BUILD] Printing label frequencies — to disable, set cfg.train.print_label_frequencies = False")
-
-        def get_label_frequencies(dataloader):
-            label_counts = Counter()
-            for batch in dataloader: 
-                data, labels = batch["data_tensor"], batch["label_tensor"]
-                if isinstance(labels, torch.Tensor):
-                    labels = labels.cpu().numpy()
-                label_counts.update(labels.flatten()) 
-            return label_counts
-
-        train_label_counts = get_label_frequencies(train_dataloader)
-        val_label_counts = get_label_frequencies(val_dataloader)
-        total_label_counts = train_label_counts + val_label_counts
-        for label, count in sorted(total_label_counts.items()):
-            inverse_emotion_idx = {v: k for k, v in cfg.data.emotion_idx.items()}
-            emotion_name = inverse_emotion_idx[label] 
-            print(f"{emotion_name}: {count}")
-
-    if cfg.data.load_model:
-        model_path_torch = cfg.data.load_model_path
-        if cfg.verbose.build:
-            print(f"[BUILD] Loading the model from {model_path_torch}...")
-
-        state_dict_torch = torch.load(model_path_torch, weights_only=True)
-        model.load_state_dict(state_dict_torch)
-        if cfg.verbose.build:
-            print(f"[BUILD] Loaded the model from {model_path_torch}")
-    elif cfg.model == "CNN":
-        model = CNN(cfg=cfg, output_dim=output_dim)
-        if cfg.verbose.build:
-            print(f"[BUILD] Loaded fresh CNN")
-    elif cfg.model == "ResNet":
-        model = ResNet(BasicBlock, [1, 1, 1, 1], in_channels=1, num_classes=22)
-        def initialize_new_layers(model):
-            for name, module in model.named_modules():
-                if 'fc' in name:
-                    if isinstance(module, nn.Linear):
-                        nn.init.xavier_normal_(module.weight)
-                        if module.bias is not None:
-                            nn.init.constant_(module.bias, 0)
-        initialize_new_layers(model)
-        if cfg.verbose.build:
-            print(f"[BUILD] Loaded fresh ResNet")
-    else:
-        raise ValueError(f"Error: load model as cfg.data.load_model = <model_path> or initialize valid model for cfg.model")
-
-    model = model.to(device)
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=cfg.data.learning_rate, weight_decay=cfg.data.weight_decay)
-    save_dir = cfg.data.save_model_path
-    os.makedirs(save_dir, exist_ok=True) if not os.path.exists(save_dir) else None
-    
-    best_val_accuracy = 0.0
     if cfg.verbose.train:
-        print(f"Starting training")
+        print(f"[TRAIN] Starting training")
+
     for epoch in range(cfg.train.epochs):
-        start_time = time.time()
-        total_loss = 0.0
-        correct_predictions = 0
-        total_samples = 0
-
         model.train()
-        for batch in tqdm(train_dataloader):
+        total_loss, correct, total = 0.0, 0, 0
+
+        for batch in tqdm(train_loader):
             data, labels = batch["data_tensor"], batch["label_tensor"]
+            data, labels = data.float().to(device), labels.long().to(device)
+            if data.dim() == 4: data = data.unsqueeze(1)
 
-            data = data.float().to(device)  # Ensure data is float for model input
-            labels = labels.long().to(device)  # Ensure labels are integers for CrossEntropyLoss
-            if data.dim() == 4:
-                data = data.unsqueeze(1)
-
-            output = model(data)
-            loss = criterion(output, labels)
             optimizer.zero_grad()
+            outputs = model(data)
+            loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
+
             total_loss += loss.item()
-            _, predictions = torch.max(output, dim=1)
-            correct_predictions += (predictions == labels).sum().item()
-            total_samples += labels.size(0) 
-        
-        end_time = time.time()
-        epoch_duration = end_time - start_time
-        accuracy = correct_predictions / total_samples if total_samples > 0 else 0
-        normalized_loss = total_loss / total_samples if total_samples > 0 else 0
-        
-        model.eval()
-        val_correct = 0
-        val_total = 0
+            correct += (outputs.argmax(1) == labels).sum().item()
+            total += labels.size(0)
 
-        with torch.no_grad():
-            for val_batch in val_dataloader:
-                val_data, val_labels = val_batch["data_tensor"], val_batch["label_tensor"]
-                val_data = val_data.float().to(device)  # Ensure data is float for model input
-                val_labels = val_labels.long().to(device)  # Ensure labels are integers for CrossEntropyLoss
-                if val_data.dim() == 4:
-                    val_data = val_data.unsqueeze(1)
+        accuracy = correct / total
 
-                val_output = model(val_data)
-                _, val_predictions = torch.max(val_output, dim=1)
-                val_correct += (val_predictions == val_labels).sum().item()
-                val_total += val_labels.size(0)
+        def evaluate(model, val_loader, device):
+            model.eval()
+            correct, total = 0, 0
+            with torch.no_grad():
+                for batch in val_loader:
+                    data, labels = batch["data_tensor"].to(device), batch["label_tensor"].to(device)
+                    if data.dim() == 4:
+                        data = data.unsqueeze(1)
+                    preds = model(data).argmax(1)
+                    correct += (preds == labels).sum().item()
+                    total += labels.size(0)
+            return correct / total if total > 0 else 0
+    
+        val_acc = evaluate(model, val_loader, device)
 
-        val_accuracy = val_correct / val_total if val_total > 0 else 0
         if cfg.verbose.train:
-            print(f"[TRAIN] Epoch [{epoch+1}/{cfg.train.epochs}], Loss: {normalized_loss:.4f}, "
-            f"Accuracy: {accuracy*100:.2f}%, Time: {epoch_duration:.2f} seconds",
-            f"Validation Accuracy: {val_accuracy * 100:.2f}")
+            print(f"[TRAIN] Epoch {epoch+1}: Loss={total_loss/total:.4f}, Accuracy={accuracy:.2%}, Val Accuracy={val_acc:.2%}")
 
         if cfg.wandb:
             wandb.log({
                 "epoch": epoch + 1,
-                "train_loss": normalized_loss,
+                "train_loss": total_loss / total,
                 "train_accuracy": accuracy,
-                "val_accuracy": val_accuracy
+                "val_accuracy": val_acc
             })
 
-
-    if cfg.wandb:
-        model_path_torch = os.path.join(save_dir, f"{wandb.run.id}-sub02-20.pth")
-    else:
-        model_path_torch = os.path.join(save_dir, "model-sub02-20.pth")
-    torch.save(model.state_dict(), model_path_torch)
-    print(f"[SAVE] Model saved at {save_dir}")
-    
+    model_path = os.path.join(cfg.data.save_model_path, wandb.run.id)
+    torch.save(model.state_dict(), model_path)
+    print(f"[SAVE] Model saved at {model_path}")
 
 if __name__ == "__main__":
     main()
