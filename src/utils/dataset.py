@@ -96,44 +96,6 @@ class ZarrDataset(Dataset):
             "session": session,
         }
 
-def get_data_loaders(cfg: DictConfig) -> (DataLoader, DataLoader):
-    """
-    Creates and returns a DataLoader for the ZarrDataset.
-    
-    Args:
-    - cfg: The configuration object loaded by Hydra.
-    - zarr_path: Path to the Zarr dataset.
-    
-    The function assumes:
-    - cfg.train.train_ratio: float, ratio of data used for training.
-    - cfg.train.batch_size: int, batch size.
-    - cfg.train.shuffle: bool, whether to shuffle datasets.
-    
-    Returns:
-    - train_dataloader: DataLoader for training split.
-    - val_dataloader: DataLoader for validation split.
-    """
-    
-    dataset = ZarrDataset(cfg.data.zarr_path)
-
-    if cfg.verbose.build:
-        print(f"[BUILD] Dataset contains {len(dataset.file_paths)} files.")
-        print(f"[BUILD] Spatial dimensions: {dataset.data.shape[1:4]}")
-        print(f"[BUILD] Subjects: {dataset.subject_ids}")
-        print(f"[BUILD] Sessions: {dataset.session_ids}")
-        print(f"[BUILD] Emotion categories: {dataset.emotions}")
-        print(f"[BUILD] Total valid labeled timepoints: {len(dataset.valid_indices)}")
-
-    # Specify the train-validation split ratio
-    train_ratio = cfg.train.train_ratio
-    train_size = int(train_ratio * len(dataset))
-    val_size = len(dataset) - train_size
-    train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=torch.Generator().manual_seed(cfg.data.seed))
-
-    # Create DataLoaders
-    train_dataloader = DataLoader(train_dataset, batch_size=cfg.train.batch_size, shuffle=cfg.train.shuffle)
-    val_dataloader = DataLoader(val_dataset, batch_size=cfg.train.batch_size, shuffle=cfg.train.shuffle)
-    return train_dataloader, val_dataloader
 
 if __name__ == "__main__":
     # Example usage:
