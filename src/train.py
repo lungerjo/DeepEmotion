@@ -21,19 +21,26 @@ def main(cfg: DictConfig) -> None:
     """
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
     if cfg.wandb:
+        if cfg.verbose.build:
+            print(f"[BUILD] Initializing wandb...")
         wandb.init(project="DeepEmotion", config=cfg_dict)
         wandb.config.update(cfg_dict)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if cfg.verbose:
-        print(f"Device: {device}")
-        print(f"Loading dataloader from {cfg.data.zarr_path}")
+    if cfg.verbose.build:
+        print(f"[BUILD] Device: {device}")
+        print(f"[BUILD] Loading dataloader from {cfg.data.zarr_path}...")
         
     train_dataloader, val_dataloader = get_data_loaders(cfg)
-    print(f"Loaded Observations: {len(train_dataloader.dataset) + len(val_dataloader.dataset)}")
+    if cfg.verbose.build:
+        print(f"[BUILD] Loaded Observations: {len(train_dataloader.dataset) + len(val_dataloader.dataset)}")
+
     output_dim = len(cfg.data.emotion_idx)
 
     if cfg.train.print_label_frequencies: 
+        if cfg.verbose.build:
+            print("[BUILD] Printing label frequencies — to disable, set cfg.train.print_label_frequencies = False")
+
         def get_label_frequencies(dataloader):
             label_counts = Counter()
             for batch in dataloader: 
@@ -53,12 +60,17 @@ def main(cfg: DictConfig) -> None:
 
     if cfg.data.load_model:
         model_path_torch = cfg.data.load_model_path
-        print(f"Loading the model from {model_path_torch}...")
+        if cfg.verbose.build:
+            print(f"[BUILD] Loading the model from {model_path_torch}...")
+
         state_dict_torch = torch.load(model_path_torch, weights_only=True)
         model.load_state_dict(state_dict_torch)
-        print(f"Loaded the model from {model_path_torch}.")
+        if cfg.verbose.build:
+            print(f"[BUILD] Loaded the model from {model_path_torch}")
     elif cfg.model == "CNN":
         model = CNN(cfg=cfg, output_dim=output_dim)
+        if cfg.verbose.build:
+            print(f"[BUILD] Loaded fresh CNN")
     elif cfg.model == "ResNet":
         model = ResNet(BasicBlock, [1, 1, 1, 1], in_channels=1, num_classes=22)
         def initialize_new_layers(model):
@@ -69,6 +81,8 @@ def main(cfg: DictConfig) -> None:
                         if module.bias is not None:
                             nn.init.constant_(module.bias, 0)
         initialize_new_layers(model)
+        if cfg.verbose.build:
+            print(f"[BUILD] Loaded fresh ResNet")
     else:
         raise ValueError(f"Error: load model as cfg.data.load_model = <model_path> or initialize valid model for cfg.model")
 
@@ -79,6 +93,8 @@ def main(cfg: DictConfig) -> None:
     os.makedirs(save_dir, exist_ok=True) if not os.path.exists(save_dir) else None
     
     best_val_accuracy = 0.0
+    if cfg.verbose.train:
+        print(f"Starting training")
     for epoch in range(cfg.train.epochs):
         start_time = time.time()
         total_loss = 0.0
@@ -127,9 +143,10 @@ def main(cfg: DictConfig) -> None:
                 val_total += val_labels.size(0)
 
         val_accuracy = val_correct / val_total if val_total > 0 else 0
-        print(f"Epoch [{epoch+1}/{cfg.train.epochs}], Loss: {normalized_loss:.4f}, "
-        f"Accuracy: {accuracy*100:.2f}%, Time: {epoch_duration:.2f} seconds",
-        f"Validation Accuracy: {val_accuracy * 100:.2f}")
+        if cfg.verbose.train:
+            print(f"[TRAIN] Epoch [{epoch+1}/{cfg.train.epochs}], Loss: {normalized_loss:.4f}, "
+            f"Accuracy: {accuracy*100:.2f}%, Time: {epoch_duration:.2f} seconds",
+            f"Validation Accuracy: {val_accuracy * 100:.2f}")
 
         if cfg.wandb:
             wandb.log({
@@ -145,7 +162,7 @@ def main(cfg: DictConfig) -> None:
     else:
         model_path_torch = os.path.join(save_dir, "model-sub02-20.pth")
     torch.save(model.state_dict(), model_path_torch)
-    print(f"Model saved at {save_dir}")
+    print(f"[SAVE] Model saved at {save_dir}")
     
 
 if __name__ == "__main__":

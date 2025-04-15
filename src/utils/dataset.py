@@ -116,14 +116,13 @@ def get_data_loaders(cfg: DictConfig) -> (DataLoader, DataLoader):
     
     dataset = ZarrDataset(cfg.data.zarr_path)
 
-    if cfg.verbose:
-        print(f"Dataset contains {len(dataset.file_paths)} files.")
-        print(f"Spatial dimensions: {dataset.data.shape[1:4]}")
-        print(f"Maximum timepoints per file: {dataset.data.shape[4]}")
-        print(f"Subjects: {dataset.subject_ids}")
-        print(f"Sessions: {dataset.session_ids}")
-        print(f"Emotion categories: {dataset.emotions}")
-        print(f"Total valid labeled timepoints: {len(dataset.valid_indices)}")
+    if cfg.verbose.build:
+        print(f"[BUILD] Dataset contains {len(dataset.file_paths)} files.")
+        print(f"[BUILD] Spatial dimensions: {dataset.data.shape[1:4]}")
+        print(f"[BUILD] Subjects: {dataset.subject_ids}")
+        print(f"[BUILD] Sessions: {dataset.session_ids}")
+        print(f"[BUILD] Emotion categories: {dataset.emotions}")
+        print(f"[BUILD] Total valid labeled timepoints: {len(dataset.valid_indices)}")
 
     # Specify the train-validation split ratio
     train_ratio = cfg.train.train_ratio

@@ -2,12 +2,15 @@
 
 project_root: ${hydra:runtime.cwd}/..
 
-verbose: True
-wandb: False
+wandb: True
 sys_log: True
 model: CNN
 transfer: 
   pretrained_model_path: "${project_root}/output/models/model-sub01-05.pth"
+
+verbose: 
+  build: True
+  train: True
 
 CNN:
   c1: 16
@@ -28,7 +31,7 @@ train:
   batch_size: 20
   shuffle: True
   train_ratio: .8
-  print_label_frequencies: True
+  print_label_frequencies: False
 
 data:
   data_path: "${project_root}/data/raw/derivatives/non-linear_anatomical_alignment"
