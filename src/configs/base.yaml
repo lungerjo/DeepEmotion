@@ -11,6 +11,8 @@ transfer:
 verbose: 
   build: True
   train: True
+  imports: True
+  time: False
 
 CNN:
   c1: 16
@@ -28,17 +30,17 @@ CNN:
 
 train:
   epochs: 50
-  batch_size: 20
+  batch_size: 35
   shuffle: True
   train_ratio: .8
   print_label_frequencies: False
 
 data:
-  data_path: "${project_root}/data/raw/derivatives/non-linear_anatomical_alignment"
+  data_path: "data/raw/derivatives/non-linear_anatomical_alignment"
   zarr_dir_path: "${project_root}/zarr_datasets"
   zarr_path: "${project_root}/zarr_datasets/pool_emotions"
   label_path: "${project_root}/data/updated_annotations/pooled_annotations_structured.tsv"
-  sessions: ["01", "02", "03", "04", "05", "06", "07", "08"]
+  sessions: ["01", "02"] #, "03", "04", "05", "06", "07", "08"]
   file_pattern_template: "*_ses-forrestgump_task-forrestgump_rec-dico7Tad2grpbold7TadNL_run-{}_bold.nii.gz"
   subjects: ["sub-01"] # sub-02", "sub-03", "sub-04", "sub-05", "sub-06", "sub-07", "sub-08", "sub-09", "sub-11", "sub-12", "sub-13", "sub-14", "sub-15", "sub-16", "sub-17", "sub-18", "sub-19", "sub-20"] # "sub-02", "sub-03", "sub-04", "sub-05", "sub-06", "sub-07", "sub-08", "sub-09", "sub-11", "sub-12", "sub-13", "sub-14", "sub-15", "sub-16", "sub-17", "sub-18", "sub-19", "sub-20"]
   session_offsets: [0, 902, 1784, 2660, 3636, 4560, 5438, 6522] # time offset at session start w.r.t. movie
