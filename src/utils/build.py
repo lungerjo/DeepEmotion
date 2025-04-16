@@ -1,7 +1,7 @@
 import time
 import sys
 from types import SimpleNamespace
-from utils.timer import time_step
+from src.utils.timer import time_step
 
 def verbose_import(name, import_fn, cfg, timers=None):
     if cfg.verbose.imports:
@@ -27,27 +27,27 @@ def imports(cfg, timers=None):
     modules["tqdm"] = verbose_import("tqdm", lambda: __import__("tqdm"), cfg, timers).tqdm
     modules["ZarrDataset"] = verbose_import(
     "utils.dataset",
-    lambda: __import__("utils.dataset", fromlist=["ZarrDataset"]),
+    lambda: __import__("src.utils.dataset", fromlist=["ZarrDataset"]),
     cfg, timers
     ).ZarrDataset
     
     modules["CNN"] = verbose_import(
-        "models.CNN",
-        lambda: __import__("models.CNN", fromlist=["CNN"]),
+        "src.models.CNN",
+        lambda: __import__("src.models.CNN", fromlist=["CNN"]),
         cfg, timers
     ).CNN
 
     resnet = verbose_import(
         "models.resnet",
-        lambda: __import__("models.resnet", fromlist=["ResNet", "BasicBlock"]),
+        lambda: __import__("src.models.resnet", fromlist=["ResNet", "BasicBlock"]),
         cfg, timers
     )
     modules["ResNet"] = resnet.ResNet
     modules["BasicBlock"] = resnet.BasicBlock
 
     modules["time_step"] = verbose_import(
-        "utils.timer.time_step",
-        lambda: __import__("utils.timer", fromlist=["time_step"]),
+        "src.utils.timer.time_step",
+        lambda: __import__("src.utils.timer", fromlist=["time_step"]),
         cfg, timers
     ).time_step
 

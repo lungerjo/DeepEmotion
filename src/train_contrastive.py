@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
-from torch.utils.data import DataLoader, random_split
+from dutils.data import DataLoader, random_split
 from tqdm import tqdm
 from collections import Counter
 

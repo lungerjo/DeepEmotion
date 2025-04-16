@@ -409,7 +409,7 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
         print(f"Zarr dataset successfully written to {output_zarr_path}!")
 
 
-@hydra.main(config_path="./configs", config_name="base", version_base="1.2")
+@hydra.main(config_path="../configs", config_name="base", version_base="1.2")
 def main(cfg: DictConfig) -> None:
 
     if cfg.verbose:
