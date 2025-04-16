@@ -1,8 +1,8 @@
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from utils import build
+from src.utils import build
 
-@hydra.main(config_path="./configs", config_name="base", version_base="1.2")
+@hydra.main(config_path="configs", config_name="base", version_base="1.2")
 def main(cfg: DictConfig) -> None:
     timers = {}
     modules = build.imports(cfg, timers)
