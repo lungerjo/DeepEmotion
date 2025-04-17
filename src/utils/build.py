@@ -96,15 +96,15 @@ def move_model_to_device(model, device, cfg, timers):
         return model.to(device)
     return _move()
 
-def setup_optimizer_and_loss(model, cfg, modules, timers):
+def setup_optimizer(model, cfg, modules, timers):
     if cfg.verbose.build:
-        print(f"[BUILD] Setting up optimizer and loss function...")
-    nn, optim = modules["nn"], modules["optim"]
-    @time_step("Init Optimizer & Loss", timers=timers, verbose=cfg.verbose.time)
+        print(f"[BUILD] Setting up optimizer...")
+    optim = modules["optim"]
+
+    @time_step("Init Optimizer", timers=timers, verbose=cfg.verbose.time)
     def _setup():
-        loss = nn.CrossEntropyLoss()
-        opt = optim.Adam(model.parameters(), lr=cfg.data.learning_rate, weight_decay=cfg.data.weight_decay)
-        return loss, opt
+        return optim.Adam(model.parameters(), lr=cfg.data.learning_rate, weight_decay=cfg.data.weight_decay)
+
     return _setup()
 
 def ensure_save_directory(path, modules, cfg, timers):

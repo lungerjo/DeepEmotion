@@ -1,6 +1,6 @@
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from src.utils import build
+from src.utils import build, eval, loss as loss_utils, logging as log_utils, debug
 
 @hydra.main(config_path="configs", config_name="base", version_base="1.2")
 def main(cfg: DictConfig) -> None:
@@ -19,16 +19,12 @@ def main(cfg: DictConfig) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     train_loader, val_loader = build.load_dataloaders(cfg, modules, timers)
 
-    if cfg.data.label_mode == "classification":
-        output_dim = len(cfg.data.emotion_idx)
-    elif cfg.data.label_mode == "regression":
-        output_dim = 22
-    else:
-        raise ValueError(f"Unsupported label_mode: {cfg.data.label_mode}")
-    
+    output_dim = len(cfg.data.emotion_idx) if cfg.data.label_mode == "classification" else cfg.data.num_regression_dims
+
     model = build.build_model(cfg, output_dim, modules, timers)
     model = build.move_model_to_device(model, device, cfg, timers)
-    criterion, optimizer = build.setup_optimizer_and_loss(model, cfg, modules, timers)
+    criterion = loss_utils.get_loss(cfg.loss)
+    optimizer = build.setup_optimizer(model, cfg, modules, timers)
     build.ensure_save_directory(cfg.data.save_model_path, modules, cfg, timers)
 
     if cfg.verbose.train:
@@ -38,16 +34,10 @@ def main(cfg: DictConfig) -> None:
         model.train()
         total_loss, correct, total = 0.0, 0, 0
 
-        for batch in tqdm(train_loader):
+        for batch_idx, batch in enumerate(tqdm(train_loader)):
             data, labels = batch["data_tensor"], batch["label_tensor"]
             data = data.float().to(device)
-
-            if cfg.data.label_mode == "regression":
-                labels = labels.float().to(device)
-                criterion = torch.nn.MSELoss()
-            elif cfg.data.label_mode == "classification":
-                labels = labels.long().to(device)
-                criterion = torch.nn.CrossEntropyLoss()
+            labels = labels.to(device)
 
             if data.dim() == 4:
                 data = data.unsqueeze(1)
@@ -63,63 +53,29 @@ def main(cfg: DictConfig) -> None:
 
             if cfg.data.label_mode == "classification":
                 correct += (outputs.argmax(1) == labels).sum().item()
-            elif cfg.data.label_mode == "regression":
+            else:
                 pred_class = outputs.argmax(dim=1)
                 true_class = labels.argmax(dim=1)
                 correct += (pred_class == true_class).sum().item()
 
+                if cfg.verbose.debug and batch_idx < 2:
+                    debug.print_soft_label(outputs, labels, batch_idx, epoch)
+
         train_accuracy = correct / total
 
         if cfg.data.label_mode == "classification":
-            def evaluate(model, val_loader, device):
-                model.eval()
-                correct, total = 0, 0
-                with torch.no_grad():
-                    for batch in val_loader:
-                        data, labels = batch["data_tensor"].to(device), batch["label_tensor"].to(device)
-                        if data.dim() == 4:
-                            data = data.unsqueeze(1)
-                        preds = model(data).argmax(1)
-                        correct += (preds == labels).sum().item()
-                        total += labels.size(0)
-                return correct / total if total > 0 else 0
-
-            val_accuracy = evaluate(model, val_loader, device)
-
-        elif cfg.data.label_mode == "regression":
-            def evaluate_soft_classification(model, val_loader, device):
-                model.eval()
-                correct, total = 0, 0
-                with torch.no_grad():
-                    for batch in val_loader:
-                        data = batch["data_tensor"].to(device)
-                        labels = batch["label_tensor"].to(device)
-                        if data.dim() == 4:
-                            data = data.unsqueeze(1)
-                        preds = model(data)
-                        pred_class = preds.argmax(dim=1)
-                        true_class = labels.argmax(dim=1)
-                        correct += (pred_class == true_class).sum().item()
-                        total += labels.size(0)
-                return correct / total if total > 0 else 0
-
-            val_accuracy = evaluate_soft_classification(model, val_loader, device)
+            val_accuracy = eval.evaluate_classification(model, val_loader, device)
+        else:
+            val_accuracy = eval.evaluate_soft_classification(model, val_loader, device)
 
         if cfg.verbose.train:
             print(f"[TRAIN] Epoch {epoch+1}: Loss={total_loss/total:.4f}, Accuracy={train_accuracy:.2%}, Val Accuracy={val_accuracy:.2%}")
 
-        if cfg.wandb:
-            wandb.log({
-                "epoch": epoch + 1,
-                "train_loss": total_loss / total,
-                "train_accuracy": train_accuracy,
-                "val_accuracy": val_accuracy
-            })
+        log_utils.log_metrics(wandb, epoch, total_loss / total, train_accuracy, val_accuracy)
 
     model_path = os.path.join(cfg.data.save_model_path, wandb.run.id)
     torch.save(model.state_dict(), model_path)
     print(f"[SAVE] Model saved at {model_path}")
-
 
 if __name__ == "__main__":
     main()
