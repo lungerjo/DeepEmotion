@@ -220,8 +220,12 @@ class CrossSubjectDataset:
         return index_mappings
     
 class ZarrDataset(Dataset):
-    def __init__(self, zarr_path: str, label_mode: str):
+    def __init__(self, zarr_path: str, label_mode: str, debug: bool):
+        self.debug = debug
         self.store = zarr.open(zarr_path, mode='r')
+        if self.debug:
+            print(f"[DEBUG] list(self.store.keys()): {list(self.store.keys())}")
+
         self.label_mode = label_mode
         self.data = self.store['data']
         self.valid_timepoints = self.store['valid_timepoints'][:]
@@ -234,11 +238,17 @@ class ZarrDataset(Dataset):
         self.aligned_labels_csv = self.store.attrs.get('aligned_labels', None)
 
         if label_mode == "classification":
-            self.labels = self.store['labels']
+            if "classification_labels" not in self.store:
+                raise ValueError("Zarr store missing classification labels.")
+            self.labels = self.store['classification_labels']
         elif label_mode == "regression":
+            if "regression_labels" not in self.store:
+                raise ValueError("Zarr store missing regression labels.")
             self.labels = self.store['regression_labels']
         else:
             raise ValueError(f"Unsupported label mode: {label_mode}")
+        if self.debug:
+            print(f"[DEBUG] self.labels.shape: {self.labels.shape}")
 
         self.valid_indices = []
         for volume_idx in range(self.data.shape[0]):
@@ -249,11 +259,14 @@ class ZarrDataset(Dataset):
                 valid_times = list(range(t_max))
             for t_idx in valid_times:
                 self.valid_indices.append((volume_idx, t_idx))
+        if self.debug:
+            print(f"[DEBUG] len(self.valid_indices): {len(self.valid_indices)}")
 
         if self.aligned_labels_csv:
             self.aligned_labels = pd.read_csv(StringIO(self.aligned_labels_csv), sep='\t')
         else:
             self.aligned_labels = None
+
 
     def __len__(self):
         return len(self.valid_indices)
@@ -263,7 +276,7 @@ class ZarrDataset(Dataset):
         volume_idx, row_idx = self.valid_indices[idx]
         volume_idx = int(volume_idx)
         row_idx = int(row_idx)
-
+        
         # Extract the data slice
         data_slice = self.data[volume_idx, :, :, :, row_idx]
         data_tensor = torch.from_numpy(data_slice)
@@ -299,7 +312,7 @@ class ZarrDataset(Dataset):
                 session_idx = subset["session_idx"].iloc[0]
                 global_idx = subset["global_idx"].iloc[0]
 
-        return {
+        sample = {
             "global_idx": global_idx,
             "volume_idx": volume_idx,
             "session_idx": session_idx,
@@ -311,6 +324,14 @@ class ZarrDataset(Dataset):
             "subject": subject,
             "session": session,
         }
+
+        """
+        if self.debug:
+            missing_keys = [k for k, v in sample.items() if v is None]
+            print(f"[DEBUG] Sample at idx={idx} has missing keys: {missing_keys}")
+        """
+
+        return sample
 
 class ContrastivePairDataset(Dataset):
     """

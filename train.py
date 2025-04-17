@@ -40,17 +40,14 @@ def main(cfg: DictConfig) -> None:
 
         for batch in tqdm(train_loader):
             data, labels = batch["data_tensor"], batch["label_tensor"]
-
-            print(f"labels.shape {labels.shape}")
-            print(f"data.shape {data.shape}")
             data = data.float().to(device)
 
-            if cfg.data.label_mode == "classification":
-                labels = labels.long().to(device)
-                criterion = torch.nn.CrossEntropyLoss()
-            elif cfg.data.label_mode == "regression":
+            if cfg.data.label_mode == "regression":
                 labels = labels.float().to(device)
                 criterion = torch.nn.MSELoss()
+            elif cfg.data.label_mode == "classification":
+                labels = labels.long().to(device)
+                criterion = torch.nn.CrossEntropyLoss()
 
             if data.dim() == 4:
                 data = data.unsqueeze(1)
@@ -62,40 +59,67 @@ def main(cfg: DictConfig) -> None:
             optimizer.step()
 
             total_loss += loss.item()
-            correct += (outputs.argmax(1) == labels).sum().item()
             total += labels.size(0)
 
-        accuracy = correct / total
+            if cfg.data.label_mode == "classification":
+                correct += (outputs.argmax(1) == labels).sum().item()
+            elif cfg.data.label_mode == "regression":
+                pred_class = outputs.argmax(dim=1)
+                true_class = labels.argmax(dim=1)
+                correct += (pred_class == true_class).sum().item()
 
-        def evaluate(model, val_loader, device):
-            model.eval()
-            correct, total = 0, 0
-            with torch.no_grad():
-                for batch in val_loader:
-                    data, labels = batch["data_tensor"].to(device), batch["label_tensor"].to(device)
-                    if data.dim() == 4:
-                        data = data.unsqueeze(1)
-                    preds = model(data).argmax(1)
-                    correct += (preds == labels).sum().item()
-                    total += labels.size(0)
-            return correct / total if total > 0 else 0
-    
-        val_acc = evaluate(model, val_loader, device)
+        train_accuracy = correct / total
+
+        if cfg.data.label_mode == "classification":
+            def evaluate(model, val_loader, device):
+                model.eval()
+                correct, total = 0, 0
+                with torch.no_grad():
+                    for batch in val_loader:
+                        data, labels = batch["data_tensor"].to(device), batch["label_tensor"].to(device)
+                        if data.dim() == 4:
+                            data = data.unsqueeze(1)
+                        preds = model(data).argmax(1)
+                        correct += (preds == labels).sum().item()
+                        total += labels.size(0)
+                return correct / total if total > 0 else 0
+
+            val_accuracy = evaluate(model, val_loader, device)
+
+        elif cfg.data.label_mode == "regression":
+            def evaluate_soft_classification(model, val_loader, device):
+                model.eval()
+                correct, total = 0, 0
+                with torch.no_grad():
+                    for batch in val_loader:
+                        data = batch["data_tensor"].to(device)
+                        labels = batch["label_tensor"].to(device)
+                        if data.dim() == 4:
+                            data = data.unsqueeze(1)
+                        preds = model(data)
+                        pred_class = preds.argmax(dim=1)
+                        true_class = labels.argmax(dim=1)
+                        correct += (pred_class == true_class).sum().item()
+                        total += labels.size(0)
+                return correct / total if total > 0 else 0
+
+            val_accuracy = evaluate_soft_classification(model, val_loader, device)
 
         if cfg.verbose.train:
-            print(f"[TRAIN] Epoch {epoch+1}: Loss={total_loss/total:.4f}, Accuracy={accuracy:.2%}, Val Accuracy={val_acc:.2%}")
+            print(f"[TRAIN] Epoch {epoch+1}: Loss={total_loss/total:.4f}, Accuracy={train_accuracy:.2%}, Val Accuracy={val_accuracy:.2%}")
 
         if cfg.wandb:
             wandb.log({
                 "epoch": epoch + 1,
                 "train_loss": total_loss / total,
-                "train_accuracy": accuracy,
-                "val_accuracy": val_acc
+                "train_accuracy": train_accuracy,
+                "val_accuracy": val_accuracy
             })
 
     model_path = os.path.join(cfg.data.save_model_path, wandb.run.id)
     torch.save(model.state_dict(), model_path)
     print(f"[SAVE] Model saved at {model_path}")
+
 
 if __name__ == "__main__":
     main()

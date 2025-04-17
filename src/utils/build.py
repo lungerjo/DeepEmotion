@@ -63,13 +63,6 @@ def setup_wandb(cfg, cfg_dict, timers):
         wandb.config.update(cfg_dict)
     _setup()
 
-def load_dataloaders(cfg, timers):
-    from utils.dataset import get_data_loaders
-    @time_step("Dataloader Load", timers=timers, verbose=cfg.verbose.time)
-    def _load():
-        return get_data_loaders(cfg)
-    return _load()
-
 def build_model(cfg, output_dim, modules, timers):
     if cfg.verbose.build:
         print(f"[BUILD] Constructing model: {cfg.model}...")
@@ -135,7 +128,12 @@ def load_dataloaders(cfg, modules, timers):
 
     @time_step("Dataloader Load", timers=timers, verbose=cfg.verbose.time)
     def _load():
-        dataset = ZarrDataset(cfg.data.zarr_path, cfg.data.label_mode)
+
+        if cfg.verbose.debug:
+            print(f"[DEBUG] cfg.data.zarr_path: {cfg.data.zarr_path}")
+            print(f"[DEBUG] cfg.data.label_mode: {cfg.data.label_mode}")
+
+        dataset = ZarrDataset(cfg.data.zarr_path, cfg.data.label_mode, debug=cfg.verbose.debug)
 
         if cfg.verbose.build:
             print(f"[BUILD] Dataset contains {len(dataset.file_paths)} files.")

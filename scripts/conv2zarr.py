@@ -86,14 +86,19 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
     merged_labels['session_idx'] = merged_labels['session'].apply(lambda s: session_map[s])
     merged_labels['global_idx'] = np.arange(len(merged_labels))
 
-    # Add regression metadata to aligned_labels CSV
-    if "regression_label_path" in cfg.data:
+    reg_path = Path(cfg.data.regression_label_path)
+    if reg_path.exists():
         reg_df = pd.read_csv(Path(cfg.data.regression_label_path), sep="\t")
+        regression_columns = [col for col in reg_df.columns if col != 'offset']
         merged_labels = pd.merge(merged_labels, reg_df, left_on="time_offset", right_on="offset", how="left")
+        merged_labels.drop(columns=["offset"], inplace=True)
+        if "session" not in merged_labels.columns:
+            merged_labels['session'] = merged_labels['file_index'].apply(lambda fi: file_to_session[fi])
+        if "session_idx" not in merged_labels.columns:
+            merged_labels['session_idx'] = merged_labels['session'].apply(lambda s: session_map[s])
+        if "global_idx" not in merged_labels.columns:
+            merged_labels['global_idx'] = np.arange(len(merged_labels))
 
-    if cfg.verbose:
-        print("Merged labels with metadata:")
-        print(merged_labels.head())
 
     csv_str = merged_labels.to_csv(index=False, sep='\t')
 
@@ -162,7 +167,7 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
         print("Creating label dataset...")
 
     label_array = store.create_dataset(
-        "labels",
+        "classification_labels",
         shape=(n_files, t_max),
         chunks=(1, 50),
         dtype='int32',
@@ -188,15 +193,12 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
         reg_df = pd.read_csv(Path(cfg.data.regression_label_path).expanduser(), sep="\t")
         regression_columns = [col for col in reg_df.columns if col != 'offset']
 
-        # Merge regression values into the aligned_labels metadata
-        regression_merged = pd.merge(merged_labels, reg_df, left_on='time_offset', right_on='offset', how='left')
-
-        # Save to aligned_labels attr
-        csv_str = regression_merged.to_csv(index=False, sep='\t')
-        store.attrs['aligned_labels'] = csv_str
-
-        # Write regression tensor
+        # Load regression labels
+        reg_df = pd.read_csv(Path(cfg.data.regression_label_path).expanduser(), sep="\t")
+        regression_columns = [col for col in reg_df.columns if col != 'offset']
         num_regression_dims = len(regression_columns)
+
+        # Create empty tensor
         regression_labels = store.create_dataset(
             "regression_labels",
             shape=(n_files, t_max, num_regression_dims),
@@ -205,12 +207,19 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
             fill_value=np.nan
         )
 
-        for _, row in regression_merged.iterrows():
-            if pd.isna(row["file_index"]) or pd.isna(row["row_index"]):
-                continue  # skip rows we don't have index info for
-            f_idx = int(row["file_index"])
-            t_idx = int(row["row_index"])
-            values = row[regression_columns].values.astype(np.float32)
+        # Map offset to file_index and row_index
+        # You’ll need to reuse CrossSubjectDataset._create_index_mappings or make a similar one for regression
+        for mapping in dataset.index_mappings:
+            if cfg.data.label_mode != "regression":
+                continue
+            f_idx = mapping['data_file_idx']
+            t_idx = mapping['row_idx']
+
+            offset = dataset.aligned_labels.iloc[mapping['aligned_label_idx']]['offset']
+            reg_row = reg_df[reg_df['offset'] == offset]
+            if reg_row.empty:
+                continue
+            values = reg_row.iloc[0][regression_columns].values.astype(np.float32)
             regression_labels[f_idx, t_idx, :] = values
 
     if cfg.verbose:
@@ -225,7 +234,7 @@ def main(cfg: DictConfig) -> None:
         print(f"[DEBUG] Hydra project root: {cfg.project_root}")
         print(f"[DEBUG] Config-resolved data path: {cfg.data.data_path}")
         print(f"[DEBUG] Full resolved data path: {(Path(cfg.project_root) / cfg.data.data_path).resolve()}")
-    output_path = str((Path(cfg.data.zarr_dir_path) / "pool_emotions").resolve())
+    output_path = str((Path(cfg.data.zarr_path)).resolve())
     if cfg.verbose:
         print("Starting Zarr dataset creation...")
     write_zarr_dataset(cfg, output_path)
