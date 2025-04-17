@@ -19,7 +19,13 @@ def main(cfg: DictConfig) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     train_loader, val_loader = build.load_dataloaders(cfg, modules, timers)
 
-    output_dim = len(cfg.data.emotion_idx)
+    if cfg.data.label_mode == "classification":
+        output_dim = len(cfg.data.emotion_idx)
+    elif cfg.data.label_mode == "regression":
+        output_dim = 22
+    else:
+        raise ValueError(f"Unsupported label_mode: {cfg.data.label_mode}")
+    
     model = build.build_model(cfg, output_dim, modules, timers)
     model = build.move_model_to_device(model, device, cfg, timers)
     criterion, optimizer = build.setup_optimizer_and_loss(model, cfg, modules, timers)
@@ -34,8 +40,20 @@ def main(cfg: DictConfig) -> None:
 
         for batch in tqdm(train_loader):
             data, labels = batch["data_tensor"], batch["label_tensor"]
-            data, labels = data.float().to(device), labels.long().to(device)
-            if data.dim() == 4: data = data.unsqueeze(1)
+
+            print(f"labels.shape {labels.shape}")
+            print(f"data.shape {data.shape}")
+            data = data.float().to(device)
+
+            if cfg.data.label_mode == "classification":
+                labels = labels.long().to(device)
+                criterion = torch.nn.CrossEntropyLoss()
+            elif cfg.data.label_mode == "regression":
+                labels = labels.float().to(device)
+                criterion = torch.nn.MSELoss()
+
+            if data.dim() == 4:
+                data = data.unsqueeze(1)
 
             optimizer.zero_grad()
             outputs = model(data)

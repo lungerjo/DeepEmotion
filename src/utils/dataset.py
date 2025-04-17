@@ -1,47 +1,255 @@
 import zarr
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split
 import pandas as pd
 from io import StringIO
 import numpy as np
 from omegaconf import DictConfig
+from pathlib import Path
+from torch.utils.data import Dataset
+import nibabel as nib
 
+# Directly embedding a minimal version of CrossSubjectDataset here
+class CrossSubjectDataset:
+    def __init__(self, cfg: DictConfig):
+        self.data_path = (Path(cfg.project_root) / cfg.data.data_path).resolve()
+        self.label_mode = cfg.data.label_mode
+        self.classification_labels = pd.read_csv((Path(cfg.project_root) / cfg.data.classification_label_path).resolve(), sep='\t')
+        self.regression_labels = pd.read_csv((Path(cfg.project_root) / cfg.data.regression_label_path).resolve(), sep='\t')
+
+        if self.label_mode == "classification":
+            self.observer_labels = self.classification_labels
+        elif self.label_mode == "regression":
+            self.observer_labels = self.regression_labels
+        else:
+            raise ValueError(f"Unknown label_mode: {self.label_mode}")
+
+        self.subjects = cfg.data.subjects
+        self.file_pattern_template = cfg.data.file_pattern_template
+        self.sessions = cfg.data.sessions
+        self.session_offsets = cfg.data.session_offsets  # Cumulative time offsets for alignment
+        self.verbose = cfg.verbose
+        self.emotion_idx = cfg.data.emotion_idx
+        self.normalization = cfg.data.normalization
+
+        # Find data files and get number of timepoints
+        self.volume_paths_per_session, self.num_timepoints_per_volume = self._load_data_info()
+
+        # Flatten the data files and num_timepoints lists
+        self.data_files = []
+        self.num_timepoints = []
+        for volume_paths, num_timepoints_per_volume in zip(self.volume_paths_per_session, self.num_timepoints_per_volume):
+            self.data_files.extend(volume_paths)
+            self.num_timepoints.extend(num_timepoints_per_volume)
+
+        if self.verbose:
+            print(f"len(self.data_files): {len(self.data_files)}")
+            print(f"ex {self.data_files[:5]}")
+            print(f"len(self.num_timepoints): {len(self.num_timepoints)}")
+            print(f"ex {self.num_timepoints[:5]}")
+
+        # Align labels and filter out 'NONE' labels
+        self.aligned_labels = self._align_labels()
+        if self.label_mode == "classification":
+            self.aligned_labels = self.aligned_labels[self.aligned_labels['emotion'] != 'NONE'].reset_index(drop=True)
+
+        # Create index mappings between labels and data slices
+        self.index_mappings = self._create_index_mappings()
+
+    def _align_labels(self):
+        """
+        Align the observer's labels based on the provided session_offsets and the first subject's timepoints.
+        """
+        aligned_labels = []
+        TR = 2  # seconds per TR
+
+        for session_idx, volume_num_timepoints in enumerate(self.num_timepoints_per_volume):
+            session_timepoints = volume_num_timepoints[0]
+            session_start = self.session_offsets[session_idx]
+
+            if session_idx < len(self.session_offsets) - 1:
+                session_end = self.session_offsets[session_idx + 1]
+            else:
+                session_end = session_start + session_timepoints * TR
+
+            if self.verbose:
+                print(f"session_{session_idx}_start {session_start}, end {session_end}")
+
+            # Filter labels within this session's time range
+            session_labels = self.observer_labels[
+                (self.observer_labels['offset'] >= session_start) &
+                (self.observer_labels['offset'] < session_end)
+            ].copy()
+
+            aligned_labels.append(session_labels)
+
+        aligned_labels = pd.concat(aligned_labels, ignore_index=True)
+
+        return aligned_labels
+
+    def _find_files(self):
+        """Searches for files in all subject directories and runs based on the file pattern."""
+        if self.verbose:
+            print(f"[DEBUG] Finding files using pattern: {self.file_pattern_template}")
+        session_files = []
+
+        for session in self.sessions:
+            if self.verbose:
+                print(f"[DEBUG] Looking for session: {session}")
+            subject_files = []
+            for subject in self.subjects:
+                subject_dir = self.data_path / subject / "ses-forrestgump/func"
+                file_pattern = self.file_pattern_template.format(session)
+
+                if self.verbose:
+                    print(f"[DEBUG] Looking in directory: {subject_dir}")
+                    print(f"[DEBUG] Using file pattern: {file_pattern}")
+
+                matched_files = list(subject_dir.rglob(file_pattern))
+                if self.verbose:
+                    print(f"[DEBUG] Found {len(matched_files)} files for subject {subject} session {session}")
+
+                subject_files.extend(matched_files)
+            session_files.append(subject_files)
+
+        return session_files
+
+    def _load_data_info(self):
+        """Gets the number of timepoints for each data file without loading data into memory."""
+        session_files = self._find_files()
+        volume_paths_per_session = []
+        num_timepoints_per_volume = []
+
+        if self.verbose:
+            print(f"[DEBUG] Loading data info for {len(session_files)} sessions")
+
+        for session_idx, subject_files in enumerate(session_files):
+            if self.verbose:
+                print(f"[DEBUG] Session {session_idx}: Found {len(subject_files)} files")
+            volume_paths = []
+            volume_num_timepoints = []
+            for volume_path in subject_files:
+                nii_img = nib.load(str(volume_path))
+                shape = nii_img.shape  # (x, y, z, t)
+                volume_num_timepoints.append(shape[-1])  # Number of timepoints (t)
+                volume_paths.append(volume_path)
+            volume_paths_per_session.append(volume_paths)
+            num_timepoints_per_volume.append(volume_num_timepoints)
+
+        if self.verbose:
+            print(f"num_timepoints_per_volume {num_timepoints_per_volume}")
+
+        return volume_paths_per_session, num_timepoints_per_volume
+
+    def _create_index_mappings(self):
+        """
+        For each session, map label offsets to a local time index in [0, session_timepoints).
+        Then apply that same row index to ALL volumes in that session (since they share the same time range).
+        We only increment the global volume index after we've handled all volumes in the session.
+        """
+        index_mappings = []
+        TR = 2  # seconds per TR
+
+        # This will track how many volumes we've already placed in the 'flattened' list
+        # after processing previous sessions.
+        global_volume_offset = 0
+
+        for session_idx, (volume_paths, volume_lengths) in enumerate(
+            zip(self.volume_paths_per_session, self.num_timepoints_per_volume)
+        ):
+            # How many timepoints does each volume in this session have?
+            # (They should all be the same, e.g. 451, 438, etc.)
+            session_timepoints = volume_lengths[0]
+            
+            # Convert session_offsets to a time range for this session
+            session_start = self.session_offsets[session_idx]
+            if session_idx < len(self.session_offsets) - 1:
+                next_session_start = self.session_offsets[session_idx + 1]
+            else:
+                # last session: just add TR * timepoints
+                next_session_start = session_start + session_timepoints * TR
+
+            # Filter labels that belong to this session’s time window
+            session_mask = (
+                (self.aligned_labels['offset'] >= session_start)
+                & (self.aligned_labels['offset'] < next_session_start)
+            )
+            session_labels = self.aligned_labels[session_mask]
+
+            # For each label event in this session:
+            for row_idx, label_row in session_labels.iterrows():
+                offset = label_row['offset']
+                if self.label_mode == "classification":
+                    label_str = label_row['emotion']
+                    label_idx = self.emotion_idx[label_str]
+                elif self.label_mode == "regression":
+                    label_idx = -1  # Not used for regression, but needs to be present
+                else:
+                    raise ValueError(f"Unsupported label mode: {self.label_mode}")
+
+
+                # Convert offset to a local time index in [0, session_timepoints)
+                local_time_idx = int((offset - session_start) / TR)
+                # Skip if it falls outside the actual volume length
+                if not (0 <= local_time_idx < session_timepoints):
+                    continue
+
+                # Assign that same time index to EVERY volume in this session
+                for vol_idx, n_tp in enumerate(volume_lengths):
+                    # Just in case volumes differ slightly in actual length:
+                    if local_time_idx >= n_tp:
+                        continue
+
+                    # data_file_idx is how we map back into the *flattened* list
+                    data_file_idx = global_volume_offset + vol_idx
+
+                    index_mappings.append({
+                        'aligned_label_idx': row_idx,
+                        'data_file_idx': data_file_idx,
+                        'row_idx': local_time_idx,
+                        'label_idx': label_idx
+                    })
+
+            # After finishing session_idx, move our global_volume_offset
+            global_volume_offset += len(volume_paths)
+
+        if self.verbose:
+            print(f"mappings created: {len(index_mappings)}")
+            for mapping in index_mappings[:5]:
+                print(mapping)
+
+        return index_mappings
+    
 class ZarrDataset(Dataset):
-    def __init__(self, zarr_path: str):
-        # Open the Zarr store in read-only mode.
+    def __init__(self, zarr_path: str, label_mode: str):
         self.store = zarr.open(zarr_path, mode='r')
-        
-        # Extract references to the arrays
-        self.data = self.store['data']            # shape: (n_files, x, y, z, t_max)
-        self.labels = self.store['labels']        # shape: (n_files, t_max)
-        self.valid_timepoints = self.store['valid_timepoints']  # shape: (n_files,)
-        self.file_paths = self.store['file_paths'][:]  # shape: (n_files,)
-        self.subject_ids = self.store['subject_ids'][:]  # shape: (num_subjects,)
-        self.session_ids = self.store['session_ids'][:]  # shape: (num_sessions,)
-        self.file_to_subject = self.store['file_to_subject'][:]  # shape: (n_files,)
-        self.file_to_session = self.store['file_to_session'][:]  # shape: (n_files,)
-        
-        # Attributes
+        self.label_mode = label_mode
+        self.data = self.store['data']
+        self.valid_timepoints = self.store['valid_timepoints'][:]
+        self.file_paths = self.store['file_paths'][:]
+        self.subject_ids = self.store['subject_ids'][:]
+        self.session_ids = self.store['session_ids'][:]
+        self.file_to_subject = self.store['file_to_subject'][:]
+        self.file_to_session = self.store['file_to_session'][:]
         self.emotions = self.store.attrs.get('emotions', [])
         self.aligned_labels_csv = self.store.attrs.get('aligned_labels', None)
 
-        # Assertions to ensure structural integrity
-        assert self.data.shape[0] == self.labels.shape[0] == len(self.file_paths), \
-            "Mismatch in number of files between data, labels, and file_paths."
-        assert len(self.file_to_subject) == self.data.shape[0], \
-            "Mismatch between file_to_subject and data."
-        assert len(self.file_to_session) == self.data.shape[0], \
-            "Mismatch between file_to_session and data."
+        if label_mode == "classification":
+            self.labels = self.store['labels']
+        elif label_mode == "regression":
+            self.labels = self.store['regression_labels']
+        else:
+            raise ValueError(f"Unsupported label mode: {label_mode}")
 
-        # Precompute the valid (volume_idx, row_idx) pairs that have a valid label.
         self.valid_indices = []
         for volume_idx in range(self.data.shape[0]):
             t_max = self.valid_timepoints[volume_idx]
-            valid_times = torch.where(torch.tensor(self.labels[volume_idx, :t_max]) != -1)[0]
-            for t_idx in valid_times.tolist():
+            if label_mode == "classification":
+                valid_times = torch.where(torch.tensor(self.labels[volume_idx, :t_max]) != -1)[0]
+            else:
+                valid_times = list(range(t_max))
+            for t_idx in valid_times:
                 self.valid_indices.append((volume_idx, t_idx))
 
-        # Parse aligned labels if available
         if self.aligned_labels_csv:
             self.aligned_labels = pd.read_csv(StringIO(self.aligned_labels_csv), sep='\t')
         else:
@@ -53,10 +261,22 @@ class ZarrDataset(Dataset):
     def __getitem__(self, idx: int):
         # Retrieve the (volume_idx, time_idx) for this valid sample
         volume_idx, row_idx = self.valid_indices[idx]
+        volume_idx = int(volume_idx)
+        row_idx = int(row_idx)
 
-        # Extract the data slice and corresponding label
+        # Extract the data slice
         data_slice = self.data[volume_idx, :, :, :, row_idx]
-        label = self.labels[volume_idx, row_idx]
+        data_tensor = torch.from_numpy(data_slice)
+
+        # Extract the label
+        if self.label_mode == "classification":
+            label = int(self.labels[volume_idx, row_idx])
+            label_tensor = torch.tensor(label, dtype=torch.long)
+        elif self.label_mode == "regression":
+            label = self.labels[volume_idx, row_idx, :]
+            label_tensor = torch.tensor(label, dtype=torch.float32)
+        else:
+            raise ValueError(f"Unsupported label mode: {self.label_mode}")
 
         # Validate subject/session mapping
         subject = self.file_to_subject[volume_idx]
@@ -64,69 +284,33 @@ class ZarrDataset(Dataset):
         assert subject in self.subject_ids, f"Subject {subject} not in subject_ids."
         assert session in self.session_ids, f"Session {session} not in session_ids."
 
-        # Convert numpy arrays to torch tensors
-        data_tensor = torch.from_numpy(data_slice)
-        label_tensor = torch.tensor(label, dtype=torch.long)
-
-        # Initialize defaults for optional metadata
+        # Optional aligned metadata
         time_offset = None
         session_idx = None
-        global_idx = idx  # global index with respect to entire dataset
+        global_idx = idx
 
         if self.aligned_labels is not None:
             subset = self.aligned_labels[
-                (self.aligned_labels['file_index'] == volume_idx) &
-                (self.aligned_labels['row_index'] == row_idx)
+                (self.aligned_labels["file_index"] == volume_idx)
+                & (self.aligned_labels["row_index"] == row_idx)
             ]
             if not subset.empty:
-                time_offset = subset['time_offset'].iloc[0]
-                session_idx = subset['session_idx'].iloc[0]
-                global_idx = subset['global_idx'].iloc[0]
+                time_offset = subset["time_offset"].iloc[0]
+                session_idx = subset["session_idx"].iloc[0]
+                global_idx = subset["global_idx"].iloc[0]
 
         return {
-            "global_idx": global_idx,  # Global index across all valid timepoints
+            "global_idx": global_idx,
             "volume_idx": volume_idx,
             "session_idx": session_idx,
-            "local_index": row_idx,  # local index within the volume
-            "time_offset": time_offset,  
+            "local_index": row_idx,
+            "time_offset": time_offset,
             "data_tensor": data_tensor,
             "label_tensor": label_tensor,
             "file_path": self.file_paths[volume_idx],
             "subject": subject,
             "session": session,
         }
-
-
-if __name__ == "__main__":
-    # Example usage:
-    zarr_path = "../dataset.zarr"
-    # Here cfg would normally come from Hydra, but you can mock it if needed:
-    from types import SimpleNamespace
-    cfg = SimpleNamespace(train=SimpleNamespace(train_ratio=0.8, batch_size=2, shuffle=True))
-    
-    # Create the dataset
-    zarr_dataset = ZarrDataset(zarr_path)
-    
-    # Get loaders
-    # train_loader, val_loader = get_data_loaders(cfg, zarr_path)
-    train_loader, val_loader = get_data_loaders(cfg)
-
-    # Inspect some samples from train_loader
-    for batch_idx, batch in enumerate(train_loader):
-        print(f"Batch {batch_idx}")
-        for i in range(len(batch["data_tensor"])):
-            print(f"  Sample {i}:")
-            print(f"    File path: {batch['file_path'][i]}")
-            print(f"    Subject: {batch['subject'][i]}")
-            print(f"    Session: {batch['session'][i]}")
-            print(f"    Volume index: {batch['volume_idx'][i]}")
-            print(f"    Local Index: {batch['local_index'][i]}")
-            print(f"    Global Idx: {batch['global_idx'][i]}")
-            print(f"    Session Idx: {batch['session_idx'][i]}")
-            print(f"    Time Offset: {batch['time_offset'][i]}")
-            print(f"    Data shape: {batch['data_tensor'][i].shape}")
-            print(f"    Label: {batch['label_tensor'][i].item()}")
-        break
 
 class ContrastivePairDataset(Dataset):
     """
