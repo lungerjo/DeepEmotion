@@ -19,7 +19,7 @@ def main(cfg: DictConfig) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     train_loader, val_loader = build.load_dataloaders(cfg, modules, timers)
 
-    output_dim = len(cfg.data.emotion_idx) if cfg.data.label_mode == "classification" else cfg.data.num_regression_dims
+    output_dim = len(cfg.data.classification_emotion_idx) if cfg.data.label_mode == "classification" else cfg.data.soft_classification_output_dim
 
     model = build.build_model(cfg, output_dim, modules, timers)
     model = build.move_model_to_device(model, device, cfg, timers)

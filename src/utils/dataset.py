@@ -14,12 +14,12 @@ class CrossSubjectDataset:
         self.data_path = (Path(cfg.project_root) / cfg.data.data_path).resolve()
         self.label_mode = cfg.data.label_mode
         self.classification_labels = pd.read_csv((Path(cfg.project_root) / cfg.data.classification_label_path).resolve(), sep='\t')
-        self.regression_labels = pd.read_csv((Path(cfg.project_root) / cfg.data.regression_label_path).resolve(), sep='\t')
+        self.soft_classification_labels = pd.read_csv((Path(cfg.project_root) / cfg.data.soft_classification_label_path).resolve(), sep='\t')
 
         if self.label_mode == "classification":
             self.observer_labels = self.classification_labels
-        elif self.label_mode == "regression":
-            self.observer_labels = self.regression_labels
+        elif self.label_mode == "soft_classification":
+            self.observer_labels = self.soft_classification_labels
         else:
             raise ValueError(f"Unknown label_mode: {self.label_mode}")
 
@@ -28,7 +28,7 @@ class CrossSubjectDataset:
         self.sessions = cfg.data.sessions
         self.session_offsets = cfg.data.session_offsets  # Cumulative time offsets for alignment
         self.verbose = cfg.verbose
-        self.emotion_idx = cfg.data.emotion_idx
+        self.classification_emotion_idx = cfg.data.classification_emotion_idx
         self.normalization = cfg.data.normalization
 
         # Find data files and get number of timepoints
@@ -180,9 +180,9 @@ class CrossSubjectDataset:
                 offset = label_row['offset']
                 if self.label_mode == "classification":
                     label_str = label_row['emotion']
-                    label_idx = self.emotion_idx[label_str]
-                elif self.label_mode == "regression":
-                    label_idx = -1  # Not used for regression, but needs to be present
+                    label_idx = self.classification_emotion_idx[label_str]
+                elif self.label_mode == "soft_classification":
+                    label_idx = -1  # Not used for soft_classificationn, but needs to be present
                 else:
                     raise ValueError(f"Unsupported label mode: {self.label_mode}")
 
@@ -241,10 +241,10 @@ class ZarrDataset(Dataset):
             if "classification_labels" not in self.store:
                 raise ValueError("Zarr store missing classification labels.")
             self.labels = self.store['classification_labels']
-        elif label_mode == "regression":
-            if "regression_labels" not in self.store:
-                raise ValueError("Zarr store missing regression labels.")
-            self.labels = self.store['regression_labels']
+        elif label_mode == "soft_classification":
+            if "soft_classification_labels" not in self.store:
+                raise ValueError("Zarr store missing soft_classification labels.")
+            self.labels = self.store['soft_classification_labels']
         else:
             raise ValueError(f"Unsupported label mode: {label_mode}")
         if self.debug:
@@ -285,7 +285,7 @@ class ZarrDataset(Dataset):
         if self.label_mode == "classification":
             label = int(self.labels[volume_idx, row_idx])
             label_tensor = torch.tensor(label, dtype=torch.long)
-        elif self.label_mode == "regression":
+        elif self.label_mode == "soft_classification":
             label = self.labels[volume_idx, row_idx, :]
             label_tensor = torch.tensor(label, dtype=torch.float32)
         else:

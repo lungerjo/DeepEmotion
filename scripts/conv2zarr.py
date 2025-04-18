@@ -33,7 +33,7 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
     aligned_labels = dataset.aligned_labels
     subjects = dataset.subjects
     sessions = dataset.sessions
-    emotion_idx = dataset.emotion_idx
+    classification_emotion_idx = dataset.classification_emotion_idx
 
     n_files = len(data_files)
     if n_files == 0:
@@ -86,10 +86,10 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
     merged_labels['session_idx'] = merged_labels['session'].apply(lambda s: session_map[s])
     merged_labels['global_idx'] = np.arange(len(merged_labels))
 
-    reg_path = Path(cfg.data.regression_label_path)
+    reg_path = Path(cfg.data.soft_classification_label_path)
     if reg_path.exists():
-        reg_df = pd.read_csv(Path(cfg.data.regression_label_path), sep="\t")
-        regression_columns = [col for col in reg_df.columns if col != 'offset']
+        reg_df = pd.read_csv(Path(cfg.data.soft_classification_label_path), sep="\t")
+        soft_classification_columns = [col for col in reg_df.columns if col != 'offset']
         merged_labels = pd.merge(merged_labels, reg_df, left_on="time_offset", right_on="offset", how="left")
         merged_labels.drop(columns=["offset"], inplace=True)
         if "session" not in merged_labels.columns:
@@ -183,34 +183,34 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
         label_array[f_idx, t_idx] = l_idx
 
     store.create_dataset("valid_timepoints", data=valid_timepoints, shape=(n_files,), dtype='int32')
-    emotions = list(emotion_idx.keys())
+    emotions = list(classification_emotion_idx.keys())
     store.attrs['emotions'] = emotions
 
-    if cfg.data.get("regression_label_path"):
+    if cfg.data.get("soft_classification_label_path"):
         if cfg.verbose:
-            print("Adding regression_labels to Zarr...")
+            print("Adding soft_classification_labels to Zarr...")
 
-        reg_df = pd.read_csv(Path(cfg.data.regression_label_path).expanduser(), sep="\t")
-        regression_columns = [col for col in reg_df.columns if col != 'offset']
+        reg_df = pd.read_csv(Path(cfg.data.soft_classification_label_path).expanduser(), sep="\t")
+        soft_classification_columns = [col for col in reg_df.columns if col != 'offset']
 
-        # Load regression labels
-        reg_df = pd.read_csv(Path(cfg.data.regression_label_path).expanduser(), sep="\t")
-        regression_columns = [col for col in reg_df.columns if col != 'offset']
-        num_regression_dims = len(regression_columns)
+        # Load soft_classification labels
+        reg_df = pd.read_csv(Path(cfg.data.soft_classification_label_path).expanduser(), sep="\t")
+        soft_classification_columns = [col for col in reg_df.columns if col != 'offset']
+        num_soft_classification_dims = len(soft_classification_columns)
 
         # Create empty tensor
-        regression_labels = store.create_dataset(
-            "regression_labels",
-            shape=(n_files, t_max, num_regression_dims),
-            chunks=(1, 50, num_regression_dims),
+        soft_classification_labels = store.create_dataset(
+            "soft_classification_labels",
+            shape=(n_files, t_max, num_soft_classification_dims),
+            chunks=(1, 50, num_soft_classification_dims),
             dtype='float32',
             fill_value=np.nan
         )
 
         # Map offset to file_index and row_index
-        # You’ll need to reuse CrossSubjectDataset._create_index_mappings or make a similar one for regression
+        # You’ll need to reuse CrossSubjectDataset._create_index_mappings or make a similar one for soft_classification
         for mapping in dataset.index_mappings:
-            if cfg.data.label_mode != "regression":
+            if cfg.data.label_mode != "soft_classification":
                 continue
             f_idx = mapping['data_file_idx']
             t_idx = mapping['row_idx']
@@ -219,8 +219,8 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
             reg_row = reg_df[reg_df['offset'] == offset]
             if reg_row.empty:
                 continue
-            values = reg_row.iloc[0][regression_columns].values.astype(np.float32)
-            regression_labels[f_idx, t_idx, :] = values
+            values = reg_row.iloc[0][soft_classification_columns].values.astype(np.float32)
+            soft_classification_labels[f_idx, t_idx, :] = values
 
     if cfg.verbose:
         print(f"Zarr dataset successfully written to {output_zarr_path}!")
