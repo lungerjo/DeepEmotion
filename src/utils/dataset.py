@@ -277,6 +277,7 @@ class ZarrDataset(Dataset):
         volume_idx = int(volume_idx)
         row_idx = int(row_idx)
         
+        
         # Extract the data slice
         data_slice = self.data[volume_idx, :, :, :, row_idx]
         data_tensor = torch.from_numpy(data_slice)
@@ -297,9 +298,7 @@ class ZarrDataset(Dataset):
         assert subject in self.subject_ids, f"Subject {subject} not in subject_ids."
         assert session in self.session_ids, f"Session {session} not in session_ids."
 
-        # Optional aligned metadata
-        time_offset = None
-        session_idx = None
+        # Optional aligned metadata – default to numeric sentinels, never None
         global_idx = idx
 
         if self.aligned_labels is not None:
@@ -307,29 +306,18 @@ class ZarrDataset(Dataset):
                 (self.aligned_labels["file_index"] == volume_idx)
                 & (self.aligned_labels["row_index"] == row_idx)
             ]
-            if not subset.empty:
-                time_offset = subset["time_offset"].iloc[0]
-                session_idx = subset["session_idx"].iloc[0]
-                global_idx = subset["global_idx"].iloc[0]
+            global_idx   = int(subset["global_idx"].iloc[0])
 
         sample = {
             "global_idx": global_idx,
             "volume_idx": volume_idx,
-            "session_idx": session_idx,
             "local_index": row_idx,
-            "time_offset": time_offset,
             "data_tensor": data_tensor,
             "label_tensor": label_tensor,
             "file_path": self.file_paths[volume_idx],
             "subject": subject,
             "session": session,
         }
-
-        """
-        if self.debug:
-            missing_keys = [k for k, v in sample.items() if v is None]
-            print(f"[DEBUG] Sample at idx={idx} has missing keys: {missing_keys}")
-        """
 
         return sample
 
