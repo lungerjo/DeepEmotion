@@ -250,17 +250,7 @@ class ZarrDataset(Dataset):
         if self.debug:
             print(f"[DEBUG] self.labels.shape: {self.labels.shape}")
 
-        self.valid_indices = []
-        for volume_idx in range(self.data.shape[0]):
-            t_max = self.valid_timepoints[volume_idx]
-            if label_mode == "classification":
-                valid_times = torch.where(torch.tensor(self.labels[volume_idx, :t_max]) != -1)[0]
-            else:
-                valid_times = list(range(t_max))
-            for t_idx in valid_times:
-                self.valid_indices.append((volume_idx, t_idx))
-        if self.debug:
-            print(f"[DEBUG] len(self.valid_indices): {len(self.valid_indices)}")
+        self.valid_indices = self.store["valid_indices"][:]
 
         if self.aligned_labels_csv:
             self.aligned_labels = pd.read_csv(StringIO(self.aligned_labels_csv), sep='\t')
@@ -306,7 +296,15 @@ class ZarrDataset(Dataset):
                 (self.aligned_labels["file_index"] == volume_idx)
                 & (self.aligned_labels["row_index"] == row_idx)
             ]
-            global_idx   = int(subset["global_idx"].iloc[0])
+            if subset.empty:
+                print(f"[ERROR] No aligned label found for volume_idx={volume_idx}, row_idx={row_idx}")
+                print(f"[ERROR] Total aligned_labels shape: {self.aligned_labels.shape}")
+                print(f"[ERROR] Unique file_index: {np.unique(self.aligned_labels['file_index'])[:10]}")
+                print(f"[ERROR] Unique row_index: {np.unique(self.aligned_labels['row_index'])[:10]}")
+                print(f"[ERROR] Sample aligned_labels head:\n{self.aligned_labels.head()}")
+                raise IndexError(f"Missing global_idx for volume_idx={volume_idx}, row_idx={row_idx}")
+            global_idx = int(subset["global_idx"].iloc[0])
+
 
         sample = {
             "global_idx": global_idx,

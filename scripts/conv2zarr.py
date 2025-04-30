@@ -55,26 +55,52 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
     file_to_subject = np.array(file_to_subject, dtype=object)
     file_to_session = np.array(file_to_session, dtype=object)
 
-    # Merge aligned_labels + index_mappings
+    if cfg.verbose.debug:
+        assert all(sub in subjects for sub in file_to_subject), \
+            "[ASSERT FAILED] Unknown subject in file_to_subject"
+        assert all(ses in sessions for ses in file_to_session), \
+            "[ASSERT FAILED] Unknown session in file_to_session"
+
+    # Step 1: Build index_mappings
     index_mappings_df = pd.DataFrame(index_mappings)
+
+    # Step 2: Reset index of aligned_labels so it can be merged
     aligned_labels_reset = aligned_labels.reset_index(drop=False).rename(columns={"index": "aligned_label_idx"})
+
+    # Step 3: Merge
     merged_labels = pd.merge(index_mappings_df, aligned_labels_reset, on="aligned_label_idx", how="left")
 
+    # Step 4: Rename columns
     merged_labels = merged_labels.rename(columns={
         "data_file_idx": "file_index",
         "row_idx": "row_index",
         "offset": "time_offset"
     })
 
+    # Step 5: Add metadata columns
     session_map = {s: i for i, s in enumerate(sessions)}
     merged_labels["session"] = merged_labels["file_index"].apply(lambda fi: file_to_session[fi])
     merged_labels["session_idx"] = merged_labels["session"].apply(lambda s: session_map[s])
     merged_labels["global_idx"] = np.arange(len(merged_labels))
+
+    # Step 6: Create CSV string
     csv_str = merged_labels.to_csv(index=False, sep="\t")
 
-    # Init Zarr store
+    # Step 7: Init Zarr store and attach metadata
     store = zarr.group(output_zarr_path, overwrite=True)
     store.attrs["aligned_labels"] = csv_str
+
+    # Step 8: Write valid_indices array
+    valid_indices_array = merged_labels[["file_index", "row_index"]].values.astype("int32")
+    store.create_dataset("valid_indices", data=valid_indices_array, shape=valid_indices_array.shape)
+
+
+    if cfg.verbose.debug:
+        assert len(index_mappings_df) == len(merged_labels), \
+            f"[ASSERT FAILED] merged_labels length ({len(merged_labels)}) != index_mappings_df length ({len(index_mappings_df)})"
+        assert not merged_labels["global_idx"].isnull().any(), \
+            "[ASSERT FAILED] Null global_idx values found in merged_labels"
+
 
     chunk_size = (1, x, y, z, 1)
     data_zarr = store.create_dataset(
@@ -97,6 +123,9 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
         volume = nii_img.get_fdata(dtype=np.float32)
         t_current = volume.shape[-1]
         valid_timepoints[i] = t_current
+
+        if cfg.verbose.debug:
+            assert t_current <= t_max, f"[ASSERT FAILED] t_current={t_current} exceeds t_max={t_max}"
 
         if cfg.data.normalization:
             volume = (volume - volume.mean()) / (volume.std() + 1e-5)
@@ -130,7 +159,12 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
     )
 
     for m in index_mappings:
-        label_array[m["data_file_idx"], m["row_idx"]] = m["label_idx"]
+        f_idx = m["data_file_idx"]
+        t_idx = m["row_idx"]
+        if cfg.verbose.debug:
+            assert 0 <= f_idx < n_files, f"[ASSERT FAILED] file idx {f_idx} out of bounds"
+            assert 0 <= t_idx < t_max, f"[ASSERT FAILED] row idx {t_idx} out of bounds (t_max={t_max})"
+        label_array[f_idx, t_idx] = m["label_idx"]
 
     if cfg.data.get("soft_classification_label_path"):
         if cfg.verbose:
@@ -156,6 +190,10 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
             offset = dataset.aligned_labels.iloc[m["aligned_label_idx"]]["offset"]
             reg_row = reg_df[reg_df["offset"] == offset]
 
+            if cfg.verbose.debug:
+                assert not reg_row.empty, \
+                    f"[ASSERT FAILED] No soft label match for offset {offset} (file={f_idx}, t={t_idx})"
+
             if not reg_row.empty:
                 values = reg_row.iloc[0][soft_cols].values.astype(np.float32)
                 soft_array[f_idx, t_idx, :] = values
@@ -167,8 +205,6 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
 
     if cfg.verbose:
         print(f"Zarr dataset successfully written to: {output_zarr_path}")
-
-
 
 
 
