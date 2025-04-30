@@ -133,13 +133,13 @@ def load_dataloaders(cfg, modules, timers):
             print(f"[DEBUG] cfg.data.zarr_path: {cfg.data.zarr_path}")
             print(f"[DEBUG] cfg.data.label_mode: {cfg.data.label_mode}")
 
-        dataset = ZarrDataset(cfg.data.zarr_path, cfg.data.label_mode, debug=cfg.verbose.debug)
+        dataset = ZarrDataset(cfg.data.zarr_path, cfg.data.label_mode, debug=cfg.verbose.debug, cfg=cfg)
 
         if cfg.verbose.build:
             print(f"[BUILD] Dataset contains {len(dataset.file_paths)} files.")
             print(f"[BUILD] Spatial dimensions: {dataset.data.shape[1:4]}")
-            print(f"[BUILD] Subjects: {dataset.subject_ids}")
-            print(f"[BUILD] Sessions: {dataset.session_ids}")
+            print(f"[BUILD] Subjects: {dataset.allowed_subjects}")
+            print(f"[BUILD] Sessions: {dataset.allowed_sessions}")
             print(f"[BUILD] Emotion categories: {dataset.emotions}")
             print(f"[BUILD] Total valid labeled timepoints: {len(dataset.valid_indices)}")
 

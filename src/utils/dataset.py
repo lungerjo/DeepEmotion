@@ -220,7 +220,7 @@ class CrossSubjectDataset:
         return index_mappings
     
 class ZarrDataset(Dataset):
-    def __init__(self, zarr_path: str, label_mode: str, debug: bool):
+    def __init__(self, zarr_path: str, label_mode: str, debug: bool, cfg: DictConfig = None):
         self.debug = debug
         self.store = zarr.open(zarr_path, mode='r')
         if self.debug:
@@ -251,11 +251,36 @@ class ZarrDataset(Dataset):
             print(f"[DEBUG] self.labels.shape: {self.labels.shape}")
 
         self.valid_indices = self.store["valid_indices"][:]
+        self.file_to_subject = self.store["file_to_subject"][:]
+        self.file_to_session = self.store["file_to_session"][:]
+        self.subject_ids = self.store["subject_ids"][:]
+        self.session_ids = self.store["session_ids"][:]
+        self.allowed_subjects = set(cfg.data.subjects)
+        self.allowed_sessions = set(cfg.data.sessions)
+
+        if self.debug:
+            print(f"[DEBUG] allowed_subjects {self.allowed_subjects}")
+        if self.debug:
+            print(f"[DEBUG] allowed_sessions {self.allowed_sessions}")
+
+        keep_files = []
+        for i in range(len(self.file_to_subject)):
+            subj = self.file_to_subject[i]
+            sess = self.file_to_session[i]
+            if subj in self.allowed_subjects and sess in self.allowed_sessions:
+                keep_files.append(i)
+        keep_files = set(keep_files)
+
+        mask = np.array([f in keep_files for f, _ in self.valid_indices])
+        self.valid_indices = self.valid_indices[mask]
+
 
         if self.aligned_labels_csv:
             self.aligned_labels = pd.read_csv(StringIO(self.aligned_labels_csv), sep='\t')
         else:
             self.aligned_labels = None
+
+            
 
 
     def __len__(self):

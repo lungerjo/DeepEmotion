@@ -1,6 +1,5 @@
 import zarr
 import numpy as np
-import torch
 from omegaconf import DictConfig
 from pathlib import Path
 import hydra
@@ -8,6 +7,7 @@ import nibabel as nib
 import pandas as pd
 import numpy as np
 import sys
+import re
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
@@ -48,7 +48,8 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
     file_to_session = []
     for fpath in data_files:
         sub = next((s for s in subjects if s in fpath.parts), None)
-        ses = next((ssn for ssn in sessions if ssn in fpath.name), None)
+        match = re.search(r'run-(\d+)', fpath.name)
+        ses = match.group(1) if match else None
         file_to_subject.append(sub)
         file_to_session.append(ses)
 
