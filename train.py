@@ -15,6 +15,9 @@ def main(cfg: DictConfig) -> None:
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)
     if cfg.wandb:
         build.setup_wandb(cfg, cfg_dict, timers)
+        cfg_dict = OmegaConf.to_container(cfg, resolve=True)
+        wandb.config.update(cfg_dict, allow_val_change=True)
+
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     train_loader, val_loader = build.load_dataloaders(cfg, modules, timers)
@@ -29,6 +32,8 @@ def main(cfg: DictConfig) -> None:
 
     if cfg.verbose.train:
         print(f"[TRAIN] Starting training")
+        print(f"[TRAIN] Batch size: {cfg.train.batch_size}")
+        print(f"[TRAIN] Epochs: {cfg.train.epochs}")
 
     for epoch in range(cfg.train.epochs):
         model.train()
