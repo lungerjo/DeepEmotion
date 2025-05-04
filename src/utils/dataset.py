@@ -31,7 +31,7 @@ class StudyForrestVolumeIndexer:
         elif cfg.data.label_mode == "soft_classification":
             self.selected_labels = self.soft_classification_labels
         else:
-            raise ValueError(f"Unknown label_mode: {self.label_mode}")
+            raise ValueError(f"Unknown label_mode: {cfg.data.label_mode}")
 
         # Align labels
         self.aligned_labels_df = self._get_aligned_labels_df()
