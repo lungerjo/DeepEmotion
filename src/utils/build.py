@@ -26,11 +26,11 @@ def imports(cfg, timers=None):
     modules["Counter"] = verbose_import("collections", lambda: __import__("collections"), cfg, timers).Counter
     modules["tqdm"] = verbose_import("tqdm", lambda: __import__("tqdm"), cfg, timers).tqdm
     modules["ZarrDataset"] = verbose_import(
-    "utils.dataset",
-    lambda: __import__("src.utils.dataset", fromlist=["ZarrDataset"]),
-    cfg, timers
+        "utils.dataset",
+        lambda: __import__("src.utils.dataset", fromlist=["ZarrDataset"]),
+        cfg, timers
     ).ZarrDataset
-    
+
     modules["CNN"] = verbose_import(
         "src.models.CNN",
         lambda: __import__("src.models.CNN", fromlist=["CNN"]),
@@ -51,7 +51,18 @@ def imports(cfg, timers=None):
         cfg, timers
     ).time_step
 
+    modules["np"] = verbose_import("numpy", lambda: __import__("numpy"), cfg, timers)
+    modules["pd"] = verbose_import("pandas", lambda: __import__("pandas"), cfg, timers)
+
+    if cfg.mode == "PCA":
+        modules["sklearn"] = verbose_import(
+            "sklearn",
+            lambda: __import__("sklearn", fromlist=["decomposition"]),
+            cfg, timers
+        )
+
     return modules
+
 
 def setup_wandb(cfg, cfg_dict, timers):
     if cfg.verbose.build:
@@ -103,7 +114,7 @@ def setup_optimizer(model, cfg, modules, timers):
 
     @time_step("Init Optimizer", timers=timers, verbose=cfg.verbose.time)
     def _setup():
-        return optim.Adam(model.parameters(), lr=cfg.data.learning_rate, weight_decay=cfg.data.weight_decay)
+        return optim.Adam(model.parameters(), lr=cfg.data.learning_rate)
 
     return _setup()
 
