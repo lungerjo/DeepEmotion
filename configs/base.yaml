@@ -3,8 +3,10 @@
 project_root: ${hydra:runtime.cwd}
 
 wandb: True
-sys_log: True
 model: CNN
+mode: "train"
+# mode options:
+# "train", "PCA", "eval"
 
 verbose: 
   build: True
@@ -13,14 +15,11 @@ verbose:
   time: False
   debug: False
 
-loss:
-  selected: "cross_entropy" # "cross_entropy" or "soft_focal_mse"
-  soft_focal_mse:
-    params:
-      alpha: 0.25
-      gamma: 2.0
+loss: "masked_soft_cross_entropy"
+# loss options: 
+# "mse", "cross_entropy", "soft_cross_entropy", "weighted_soft_cross_entropy", "masked_soft_cross_entropy"
 
-
+# 3DCNN hyperparameters
 CNN:
   c1: 16
   c2: 32
@@ -35,9 +34,10 @@ CNN:
   stride: 1
   padding: 1
 
+# training parameters
 train:
-  epochs: 10
-  batch_size: 25
+  epochs: 15
+  batch_size: 110
   shuffle: True
   train_ratio: .8
   print_label_frequencies: False
@@ -52,16 +52,19 @@ data:
   file_pattern_template: "*_ses-forrestgump_task-forrestgump_rec-dico7Tad2grpbold7TadNL_run-{}_bold.nii.gz"
   subjects: ["sub-01"] # , "sub-02", "sub-03", "sub-04", "sub-05", "sub-06", "sub-07", "sub-08", "sub-09", "sub-11", "sub-12", "sub-13", "sub-14", "sub-15", "sub-16", "sub-17", "sub-18", "sub-19", "sub-20"] # "sub-02", "sub-03", "sub-04", "sub-05", "sub-06", "sub-07", "sub-08", "sub-09", "sub-11", "sub-12", "sub-13", "sub-14", "sub-15", "sub-16", "sub-17", "sub-18", "sub-19", "sub-20"]
   session_offsets: [0, 902, 1784, 2660, 3636, 4560, 5438, 6522] # time offset at session start w.r.t. movie
-  weight_decay: 0
-  learning_rate: 1e-5
+  learning_rate: 1e-4
   seed: 42
   save_model: True
   load_model: False
   save_model_path: "output/models"
-  load_model_path: None
+  load_model_path: "/home/lungerjo/scratch/DeepEmotion/output/models/sgb32gsp"
   classification_emotion_idx: {'NONE': 0, 'HAPPINESS': 1, 'FEAR': 2, 'SADNESS': 3, 'LOVE': 4, 'ANGER': 5}
   soft_classification_output_dim: 19
+  pca_out_path: "output/PCA/hidden/i8adt0w5"
+  none_class_index: -1
+  soft_class_frequencies: [75, 34, 35, 328, 4, 17, 10, 291, 25, 31, 235, 45, 12, 0, 1, 285, 23, 11, 2060]
 
+# hydra runtime config
 hydra:
   run:
     dir: ${project_root}/output  # Set Hydra run directory relative to project_root
