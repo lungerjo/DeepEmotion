@@ -7,23 +7,12 @@ from omegaconf import DictConfig
 from pathlib import Path
 from torch.utils.data import Dataset
 import nibabel as nib
+from collections import defaultdict
 
-# Directly embedding a minimal version of CrossSubjectDataset here
-class CrossSubjectDataset:
+class StudyForrestVolumeIndexer:
     def __init__(self, cfg: DictConfig):
 
         self.data_path = (Path(cfg.project_root) / cfg.data.data_path).resolve()
-        self.label_mode = cfg.data.label_mode
-        
-        self.classification_labels = pd.read_csv((Path(cfg.project_root) / cfg.data.classification_label_path).resolve(), sep='\t')
-        self.soft_classification_labels = pd.read_csv((Path(cfg.project_root) / cfg.data.soft_classification_label_path).resolve(), sep='\t')
-        if self.label_mode == "classification":
-            self.observer_labels = self.classification_labels
-        elif self.label_mode == "soft_classification":
-            self.observer_labels = self.soft_classification_labels
-        else:
-            raise ValueError(f"Unknown label_mode: {self.label_mode}")
-
         self.subjects = cfg.data.subjects
         self.sessions = cfg.data.sessions
         self.file_pattern_template = cfg.data.file_pattern_template
@@ -32,185 +21,135 @@ class CrossSubjectDataset:
         self.classification_emotion_idx = cfg.data.classification_emotion_idx
 
         # Find data files and get number of timepoints
-        self.volume_paths_per_session, self.num_timepoints_per_volume = self._load_data_info()
+        self.volume_paths, self.volume_to_session = self._get_volume_paths()
+        self.volume_lengths = self._get_volume_lengths(self.volume_paths)
 
-        # Flatten the data files and num_timepoints lists
-        self.data_files = []
-        self.num_timepoints = []
-        for volume_paths, num_timepoints_per_volume in zip(self.volume_paths_per_session, self.num_timepoints_per_volume):
-            self.data_files.extend(volume_paths)
-            self.num_timepoints.extend(num_timepoints_per_volume)
+        self.classification_labels = pd.read_csv((Path(cfg.project_root) / cfg.data.classification_label_path).resolve(), sep='\t')
+        self.soft_classification_labels = pd.read_csv((Path(cfg.project_root) / cfg.data.soft_classification_label_path).resolve(), sep='\t')
+        if cfg.data.label_mode == "classification":
+            self.selected_labels = self.classification_labels
+        elif cfg.data.label_mode == "soft_classification":
+            self.selected_labels = self.soft_classification_labels
+        else:
+            raise ValueError(f"Unknown label_mode: {self.label_mode}")
 
-        if self.verbose:
-            print(f"len(self.data_files): {len(self.data_files)}")
-            print(f"ex {self.data_files[:5]}")
-            print(f"len(self.num_timepoints): {len(self.num_timepoints)}")
-            print(f"ex {self.num_timepoints[:5]}")
-
-        # Align labels and filter out 'NONE' labels
-        self.aligned_labels = self._align_labels()
-        if self.label_mode == "classification":
-            self.aligned_labels = self.aligned_labels[self.aligned_labels['emotion'] != 'NONE'].reset_index(drop=True)
+        # Align labels
+        self.aligned_labels_df = self._get_aligned_labels_df()
 
         # Create index mappings between labels and data slices
         self.index_mappings = self._create_index_mappings()
 
-    def _align_labels(self):
+    def _get_aligned_labels_df(self):
         """
-        Align the observer's labels based on the provided session_offsets and the first subject's timepoints.
+        Align the observer's labels based on session_offsets and volume-to-session mapping.
+        Returns:
+            pd.DataFrame: Aligned labels within the fMRI acquisition range.
         """
         aligned_labels = []
         TR = 2  # seconds per TR
 
-        for session_idx, volume_num_timepoints in enumerate(self.num_timepoints_per_volume):
-            session_timepoints = volume_num_timepoints[0]
-            session_start = self.session_offsets[session_idx]
+        # Group volume indices by session
+        session_to_volumes = defaultdict(list)
+        for i, sess_idx in enumerate(self.volume_to_session):
+            session_to_volumes[sess_idx].append(i)
 
+        for session_idx in range(len(self.session_offsets)):
+            volume_indices = session_to_volumes[session_idx]
+            if not volume_indices:
+                continue
+
+            session_start = self.session_offsets[session_idx]
             if session_idx < len(self.session_offsets) - 1:
                 session_end = self.session_offsets[session_idx + 1]
             else:
+                # fallback: estimate using the timepoints of the first volume in the session
+                first_volume_idx = volume_indices[0]
+                session_timepoints = self.volume_lengths[first_volume_idx]
                 session_end = session_start + session_timepoints * TR
 
             if self.verbose:
                 print(f"session_{session_idx}_start {session_start}, end {session_end}")
 
-            # Filter labels within this session's time range
-            session_labels = self.observer_labels[
-                (self.observer_labels['offset'] >= session_start) &
-                (self.observer_labels['offset'] < session_end)
+            session_labels = self.selected_labels[
+                (self.selected_labels['offset'] >= session_start) &
+                (self.selected_labels['offset'] < session_end)
             ].copy()
 
             aligned_labels.append(session_labels)
 
-        aligned_labels = pd.concat(aligned_labels, ignore_index=True)
+        return pd.concat(aligned_labels, ignore_index=True)
 
-        return aligned_labels
 
-    def _find_files(self):
-        """Searches for files in all subject directories and runs based on the file pattern."""
-        if self.verbose:
-            print(f"[DEBUG] Finding files using pattern: {self.file_pattern_template}")
-        session_files = []
+    def _get_volume_lengths(self, paths: list[Path]) -> list[int]:
+        return [nib.load(str(p)).shape[-1] for p in paths]
 
-        for session in self.sessions:
-            if self.verbose:
-                print(f"[DEBUG] Looking for session: {session}")
-            subject_files = []
+    def _get_volume_paths(self):
+        paths = []
+        session_indices = []
+
+        for session_idx, session in enumerate(self.sessions):
             for subject in self.subjects:
                 subject_dir = self.data_path / subject / "ses-forrestgump/func"
                 file_pattern = self.file_pattern_template.format(session)
+                matched = list(subject_dir.rglob(file_pattern))
+                paths.extend(matched)
+                session_indices.extend([session_idx] * len(matched))
 
-                if self.verbose:
-                    print(f"[DEBUG] Looking in directory: {subject_dir}")
-                    print(f"[DEBUG] Using file pattern: {file_pattern}")
-
-                matched_files = list(subject_dir.rglob(file_pattern))
-                if self.verbose:
-                    print(f"[DEBUG] Found {len(matched_files)} files for subject {subject} session {session}")
-
-                subject_files.extend(matched_files)
-            session_files.append(subject_files)
-
-        return session_files
-
-    def _load_data_info(self):
-        """Gets the number of timepoints for each data file without loading data into memory."""
-        session_files = self._find_files()
-        volume_paths_per_session = []
-        num_timepoints_per_volume = []
-
-        if self.verbose:
-            print(f"[DEBUG] Loading data info for {len(session_files)} sessions")
-
-        for session_idx, subject_files in enumerate(session_files):
-            if self.verbose:
-                print(f"[DEBUG] Session {session_idx}: Found {len(subject_files)} files")
-            volume_paths = []
-            volume_num_timepoints = []
-            for volume_path in subject_files:
-                nii_img = nib.load(str(volume_path))
-                shape = nii_img.shape  # (x, y, z, t)
-                volume_num_timepoints.append(shape[-1])  # Number of timepoints (t)
-                volume_paths.append(volume_path)
-            volume_paths_per_session.append(volume_paths)
-            num_timepoints_per_volume.append(volume_num_timepoints)
-
-        if self.verbose:
-            print(f"num_timepoints_per_volume {num_timepoints_per_volume}")
-
-        return volume_paths_per_session, num_timepoints_per_volume
+        return paths, session_indices
 
     def _create_index_mappings(self):
         """
         For each session, map label offsets to a local time index in [0, session_timepoints).
         Then apply that same row index to ALL volumes in that session (since they share the same time range).
-        We only increment the global volume index after we've handled all volumes in the session.
         """
         index_mappings = []
         TR = 2  # seconds per TR
 
-        # This will track how many volumes we've already placed in the 'flattened' list
-        # after processing previous sessions.
-        global_volume_offset = 0
+        # Group volume indices by session
+        session_to_volumes = defaultdict(list)
+        for i, sess_idx in enumerate(self.volume_to_session):
+            session_to_volumes[sess_idx].append(i)
 
-        for session_idx, (volume_paths, volume_lengths) in enumerate(
-            zip(self.volume_paths_per_session, self.num_timepoints_per_volume)
-        ):
-            # How many timepoints does each volume in this session have?
-            # (They should all be the same, e.g. 451, 438, etc.)
-            session_timepoints = volume_lengths[0]
-            
-            # Convert session_offsets to a time range for this session
+        for session_idx in range(len(self.session_offsets)):
+            volume_indices = session_to_volumes[session_idx]
+            if not volume_indices:
+                continue
+
             session_start = self.session_offsets[session_idx]
             if session_idx < len(self.session_offsets) - 1:
-                next_session_start = self.session_offsets[session_idx + 1]
+                session_end = self.session_offsets[session_idx + 1]
             else:
-                # last session: just add TR * timepoints
-                next_session_start = session_start + session_timepoints * TR
+                session_timepoints = self.volume_lengths[volume_indices[0]]
+                session_end = session_start + session_timepoints * TR
 
-            # Filter labels that belong to this session’s time window
+            # Labels that fall within this session's time window
             session_mask = (
-                (self.aligned_labels['offset'] >= session_start)
-                & (self.aligned_labels['offset'] < next_session_start)
+                (self.aligned_labels_df['offset'] >= session_start) &
+                (self.aligned_labels_df['offset'] < session_end)
             )
-            session_labels = self.aligned_labels[session_mask]
+            session_labels = self.aligned_labels_df[session_mask]
 
-            # For each label event in this session:
             for row_idx, label_row in session_labels.iterrows():
                 offset = label_row['offset']
                 if self.label_mode == "classification":
                     label_str = label_row['emotion']
                     label_idx = self.classification_emotion_idx[label_str]
                 elif self.label_mode == "soft_classification":
-                    label_idx = -1  # Not used for soft_classificationn, but needs to be present
+                    label_idx = -1
                 else:
                     raise ValueError(f"Unsupported label mode: {self.label_mode}")
 
-
-                # Convert offset to a local time index in [0, session_timepoints)
                 local_time_idx = int((offset - session_start) / TR)
-                # Skip if it falls outside the actual volume length
-                if not (0 <= local_time_idx < session_timepoints):
-                    continue
 
-                # Assign that same time index to EVERY volume in this session
-                for vol_idx, n_tp in enumerate(volume_lengths):
-                    # Just in case volumes differ slightly in actual length:
-                    if local_time_idx >= n_tp:
-                        continue
-
-                    # data_file_idx is how we map back into the *flattened* list
-                    data_file_idx = global_volume_offset + vol_idx
-
-                    index_mappings.append({
-                        'aligned_label_idx': row_idx,
-                        'data_file_idx': data_file_idx,
-                        'row_idx': local_time_idx,
-                        'label_idx': label_idx
-                    })
-
-            # After finishing session_idx, move our global_volume_offset
-            global_volume_offset += len(volume_paths)
+                for vol_idx in volume_indices:
+                    n_tp = self.volume_lengths[vol_idx]
+                    if 0 <= local_time_idx < n_tp:
+                        index_mappings.append({
+                            'aligned_label_idx': row_idx,
+                            'data_file_idx': vol_idx,
+                            'row_idx': local_time_idx,
+                            'label_idx': label_idx
+                        })
 
         if self.verbose:
             print(f"mappings created: {len(index_mappings)}")
@@ -218,6 +157,8 @@ class CrossSubjectDataset:
                 print(mapping)
 
         return index_mappings
+
+
     
 class ZarrDataset(Dataset):
     def __init__(self, zarr_path: str, label_mode: str, debug: bool, cfg: DictConfig = None):
