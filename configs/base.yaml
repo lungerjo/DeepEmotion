@@ -1,0 +1,98 @@
+# base.yaml
+
+project_root: ${hydra:runtime.cwd}
+
+wandb: True
+sys_log: True
+model: CNN
+
+verbose: 
+  build: True
+  train: True
+  imports: True
+  time: False
+  debug: False
+
+loss:
+  selected: "cross_entropy" # "cross_entropy" or "soft_focal_mse"
+  soft_focal_mse:
+    params:
+      alpha: 0.25
+      gamma: 2.0
+
+
+CNN:
+  c1: 16
+  c2: 32
+  c3: 64
+  k1: 3
+  k2: 3
+  k3: 3
+  pk: 2
+  ps: 2
+
+  kernel_size: 3
+  stride: 1
+  padding: 1
+
+train:
+  epochs: 10
+  batch_size: 25
+  shuffle: True
+  train_ratio: .8
+  print_label_frequencies: False
+
+data:
+  label_mode: "soft_classification" # "classification" or "soft_classification"
+  data_path: "${project_root}/data/raw/derivatives/non-linear_anatomical_alignment"
+  zarr_path: "${project_root}/zarr_datasets"
+  classification_label_path: "${project_root}/annotations/classification.tsv"
+  soft_classification_label_path: "${project_root}/annotations/soft_classification.tsv"
+  sessions: ["01", "02", "03", "04", "05", "06", "07", "08"]
+  file_pattern_template: "*_ses-forrestgump_task-forrestgump_rec-dico7Tad2grpbold7TadNL_run-{}_bold.nii.gz"
+  subjects: ["sub-01"] # , "sub-02", "sub-03", "sub-04", "sub-05", "sub-06", "sub-07", "sub-08", "sub-09", "sub-11", "sub-12", "sub-13", "sub-14", "sub-15", "sub-16", "sub-17", "sub-18", "sub-19", "sub-20"] # "sub-02", "sub-03", "sub-04", "sub-05", "sub-06", "sub-07", "sub-08", "sub-09", "sub-11", "sub-12", "sub-13", "sub-14", "sub-15", "sub-16", "sub-17", "sub-18", "sub-19", "sub-20"]
+  session_offsets: [0, 902, 1784, 2660, 3636, 4560, 5438, 6522] # time offset at session start w.r.t. movie
+  weight_decay: 0
+  learning_rate: 1e-5
+  seed: 42
+  save_model: True
+  load_model: False
+  save_model_path: "output/models"
+  load_model_path: None
+  classification_emotion_idx: {'NONE': 0, 'HAPPINESS': 1, 'FEAR': 2, 'SADNESS': 3, 'LOVE': 4, 'ANGER': 5}
+  soft_classification_output_dim: 19
+
+hydra:
+  run:
+    dir: ${project_root}/output  # Set Hydra run directory relative to project_root
+  output_subdir: null  # No additional subdirectory created within output
+
+  job_logging:
+    version: 1
+    disable_existing_loggers: True
+    formatters:
+      simple:
+        format: '%(message)s'
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: simple
+        stream: ext://sys.stdout
+    root:
+      level: INFO
+      handlers: [console]
+
+  hydra_logging:
+    version: 1
+    disable_existing_loggers: True
+    formatters:
+      simple:
+        format: '%(message)s'
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: simple
+        stream: ext://sys.stdout
+    root:
+      level: INFO
+      handlers: [console]

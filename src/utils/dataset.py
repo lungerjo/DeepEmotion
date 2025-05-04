@@ -11,11 +11,12 @@ import nibabel as nib
 # Directly embedding a minimal version of CrossSubjectDataset here
 class CrossSubjectDataset:
     def __init__(self, cfg: DictConfig):
+
         self.data_path = (Path(cfg.project_root) / cfg.data.data_path).resolve()
         self.label_mode = cfg.data.label_mode
+        
         self.classification_labels = pd.read_csv((Path(cfg.project_root) / cfg.data.classification_label_path).resolve(), sep='\t')
         self.soft_classification_labels = pd.read_csv((Path(cfg.project_root) / cfg.data.soft_classification_label_path).resolve(), sep='\t')
-
         if self.label_mode == "classification":
             self.observer_labels = self.classification_labels
         elif self.label_mode == "soft_classification":
@@ -24,12 +25,11 @@ class CrossSubjectDataset:
             raise ValueError(f"Unknown label_mode: {self.label_mode}")
 
         self.subjects = cfg.data.subjects
-        self.file_pattern_template = cfg.data.file_pattern_template
         self.sessions = cfg.data.sessions
+        self.file_pattern_template = cfg.data.file_pattern_template
         self.session_offsets = cfg.data.session_offsets  # Cumulative time offsets for alignment
         self.verbose = cfg.verbose
         self.classification_emotion_idx = cfg.data.classification_emotion_idx
-        self.normalization = cfg.data.normalization
 
         # Find data files and get number of timepoints
         self.volume_paths_per_session, self.num_timepoints_per_volume = self._load_data_info()
@@ -278,9 +278,7 @@ class ZarrDataset(Dataset):
         if self.aligned_labels_csv:
             self.aligned_labels = pd.read_csv(StringIO(self.aligned_labels_csv), sep='\t')
         else:
-            self.aligned_labels = None
-
-            
+            self.aligned_labels = None       
 
 
     def __len__(self):
