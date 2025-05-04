@@ -11,42 +11,39 @@ import re
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from src.utils.dataset import CrossSubjectDataset
+from src.utils.dataset import StudyForrestVolumeIndexer
 
 def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
-    if cfg.verbose:
-        print("Initializing CrossSubjectDataset for alignment and indexing...")
+    dataset = StudyForrestVolumeIndexer(cfg)
 
-    dataset = CrossSubjectDataset(cfg)
+    if cfg.verbose.build:
+        print("[BUILD] Dataset indexing and alignment complete.")
+        print(f"[BUILD] Number of volumes: {len(dataset.volume_paths)}")
+        print(f"[BUILD] Number of valid samples: {len(dataset.index_mappings)}")
+        print(f"[BUILD] Subjects: {dataset.subjects}")
+        print(f"[BUILD] Sessions: {dataset.sessions}")
 
-    if cfg.verbose:
-        print("Dataset indexing and alignment complete.")
-        print(f"Number of files: {len(dataset.data_files)}")
-        print(f"Number of valid samples: {len(dataset.index_mappings)}")
-        print(f"Subjects: {dataset.subjects}")
-        print(f"Sessions: {dataset.sessions}")
-
-    data_files = dataset.data_files
+    volume_paths = dataset.volume_paths
     index_mappings = dataset.index_mappings
-    aligned_labels = dataset.aligned_labels
+    labels_df = dataset.labels_df
     subjects = dataset.subjects
     sessions = dataset.sessions
     classification_emotion_idx = dataset.classification_emotion_idx
-    n_files = len(data_files)
-    t_max = max(dataset.num_timepoints)
+    n_files = len(volume_paths)
+    t_max = max(dataset.volume_lengths)
 
     if n_files == 0:
         raise ValueError("No data files found.")
 
     # Get spatial dimensions
-    if cfg.verbose:
-        print("Determining spatial shape from the first file...")
-    x, y, z, _ = nib.load(str(data_files[0])).shape
+    if cfg.verbose.build:
+        print("[BUILD] Determining spatial shape from the first file...")
+    x, y, z, _ = nib.load(str(volume_paths[0])).shape
 
     # Determine file_to_subject/session mappings
     file_to_subject = []
     file_to_session = []
-    for fpath in data_files:
+    for fpath in volume_paths:
         sub = next((s for s in subjects if s in fpath.parts), None)
         match = re.search(r'run-(\d+)', fpath.name)
         ses = match.group(1) if match else None
@@ -66,21 +63,14 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
     index_mappings_df = pd.DataFrame(index_mappings)
 
     # Step 2: Reset index of aligned_labels so it can be merged
-    aligned_labels_reset = aligned_labels.reset_index(drop=False).rename(columns={"index": "aligned_label_idx"})
+    aligned_labels_reset = labels_df.reset_index(drop=False).rename(columns={"index": "label_idx"})
 
     # Step 3: Merge
-    merged_labels = pd.merge(index_mappings_df, aligned_labels_reset, on="aligned_label_idx", how="left")
-
-    # Step 4: Rename columns
-    merged_labels = merged_labels.rename(columns={
-        "data_file_idx": "file_index",
-        "row_idx": "row_index",
-        "offset": "time_offset"
-    })
+    merged_labels = pd.merge(index_mappings_df, aligned_labels_reset, on="label_idx", how="left")
 
     # Step 5: Add metadata columns
     session_map = {s: i for i, s in enumerate(sessions)}
-    merged_labels["session"] = merged_labels["file_index"].apply(lambda fi: file_to_session[fi])
+    merged_labels["session"] = merged_labels["vol_idx"].apply(lambda fi: file_to_session[fi])
     merged_labels["session_idx"] = merged_labels["session"].apply(lambda s: session_map[s])
     merged_labels["global_idx"] = np.arange(len(merged_labels))
 
@@ -92,16 +82,14 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
     store.attrs["aligned_labels"] = csv_str
 
     # Step 8: Write valid_indices array
-    valid_indices_array = merged_labels[["file_index", "row_index"]].values.astype("int32")
+    valid_indices_array = merged_labels[["vol_idx", "local_idx"]].values.astype("int32")
     store.create_dataset("valid_indices", data=valid_indices_array, shape=valid_indices_array.shape)
-
 
     if cfg.verbose.debug:
         assert len(index_mappings_df) == len(merged_labels), \
             f"[ASSERT FAILED] merged_labels length ({len(merged_labels)}) != index_mappings_df length ({len(index_mappings_df)})"
         assert not merged_labels["global_idx"].isnull().any(), \
             "[ASSERT FAILED] Null global_idx values found in merged_labels"
-
 
     chunk_size = (1, x, y, z, 1)
     data_zarr = store.create_dataset(
@@ -112,13 +100,13 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
         compressor=None
     )
 
-    if cfg.verbose:
-        print(f"Writing data to Zarr dataset ({n_files} files)...")
+    if cfg.verbose.build :
+        print(f"[BUILD] Writing data to Zarr dataset ({n_files} files)...")
 
     valid_timepoints = np.zeros(n_files, dtype="int32")
-    for i, file_path in enumerate(data_files):
+    for i, file_path in enumerate(volume_paths):
         if cfg.verbose.debug:
-            print(f"[DEBUG] Loading file {i}: {file_path}")
+            print(f"[BUILD] Loading file {i}: {file_path}")
 
         nii_img = nib.load(str(file_path))
         volume = nii_img.get_fdata(dtype=np.float32)
@@ -128,17 +116,11 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
         if cfg.verbose.debug:
             assert t_current <= t_max, f"[ASSERT FAILED] t_current={t_current} exceeds t_max={t_max}"
 
-        if cfg.data.normalization:
-            volume = (volume - volume.mean()) / (volume.std() + 1e-5)
-
         data_zarr[i, ..., :t_current] = volume
         del volume, nii_img
 
-        if cfg.verbose.debug:
-            print(f"[DEBUG] Wrote volume {i} (t={t_current})")
-
     # Metadata arrays
-    file_paths = np.array([str(p) for p in data_files], dtype=object)
+    file_paths = np.array([str(p) for p in volume_paths], dtype=object)
 
     store.create_dataset("valid_timepoints", data=valid_timepoints, shape=(n_files,), dtype="int32")
     store.create_dataset("file_paths", data=file_paths.astype(f'U{max(len(p) for p in file_paths)}'), shape=(n_files,))
@@ -148,8 +130,8 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
     store.create_dataset("file_to_session", data=file_to_session.astype(f'U{max(len(s) for s in file_to_session)}'), shape=(n_files,))
     store.attrs["emotions"] = list(classification_emotion_idx.keys())
 
-    if cfg.verbose:
-        print("Creating classification label array...")
+    if cfg.verbose.build:
+        print("[BUILD] Creating classification label array...")
 
     label_array = store.create_dataset(
         "classification_labels",
@@ -160,8 +142,8 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
     )
 
     for m in index_mappings:
-        f_idx = m["data_file_idx"]
-        t_idx = m["row_idx"]
+        f_idx = m["vol_idx"]
+        t_idx = m["local_idx"]
         if cfg.verbose.debug:
             assert 0 <= f_idx < n_files, f"[ASSERT FAILED] file idx {f_idx} out of bounds"
             assert 0 <= t_idx < t_max, f"[ASSERT FAILED] row idx {t_idx} out of bounds (t_max={t_max})"
@@ -186,9 +168,9 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
         for m in dataset.index_mappings:
             if cfg.data.label_mode != "soft_classification":
                 continue
-            f_idx = m["data_file_idx"]
-            t_idx = m["row_idx"]
-            offset = dataset.aligned_labels.iloc[m["aligned_label_idx"]]["offset"]
+            f_idx = m["vol_idx"]
+            t_idx = m["local_idx"]
+            offset = m["offset"]
             reg_row = reg_df[reg_df["offset"] == offset]
 
             if cfg.verbose.debug:
@@ -204,25 +186,24 @@ def write_zarr_dataset(cfg: DictConfig, output_zarr_path: str):
             elif cfg.verbose.debug:
                 print(f"[DEBUG] No match for soft label at offset={offset}")
 
-    if cfg.verbose:
-        print(f"Zarr dataset successfully written to: {output_zarr_path}")
-
+    if cfg.verbose.build:
+        print(f"[BUILD] Zarr dataset successfully written to: {output_zarr_path}")
 
 
 @hydra.main(config_path="../configs", config_name="base", version_base="1.2")
 def main(cfg: DictConfig) -> None:
 
-    if cfg.verbose:
+    if cfg.verbose.debug:
         print(f"[DEBUG] Current working directory: {Path.cwd()}")
         print(f"[DEBUG] Hydra project root: {cfg.project_root}")
         print(f"[DEBUG] Config-resolved data path: {cfg.data.data_path}")
         print(f"[DEBUG] Full resolved data path: {(Path(cfg.project_root) / cfg.data.data_path).resolve()}")
     output_path = str((Path(cfg.data.zarr_path)).resolve())
-    if cfg.verbose:
-        print("Starting Zarr dataset creation...")
+    if cfg.verbose.build:
+        print("[BUILD] Starting Zarr dataset creation...")
     write_zarr_dataset(cfg, output_path)
-    if cfg.verbose:
-        print("Zarr dataset creation completed.")
+    if cfg.verbose.build:
+        print("[BUILD] Zarr dataset creation completed.")
 
 if __name__ == "__main__":
     main()
