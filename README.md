@@ -1,4 +1,4 @@
-# DeepEmotion: Brain-agnostic 3DCNNs Learn Naturalistic Emotion from 7t fMRI
+# DeepEmotion: Representation-first Emotion Decoding from 7T fMRI
 
 This repository contains the work of the 2024-2025 DeepEmotion project team from the University of Toronto Machine Intelligence Student Team (UTMIST).
 
